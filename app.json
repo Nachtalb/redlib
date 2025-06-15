@@ -82,6 +82,9 @@
     },
     "REDLIB_DEFAULT_GEO_FILTER": {
       "required": false
+    },
+    "REDLIB_DEFAULT_CLEAN_URLS": {
+      "required": false
     }
   }
 }

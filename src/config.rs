@@ -113,6 +113,8 @@ pub struct Config {
 	pub(crate) source_url: Option<String>,
 	#[serde(rename = "REDLIB_DEFAULT_GEO_FILTER")]
 	pub(crate) default_geo_filter: Option<String>,
+	#[serde(rename = "REDLIB_DEFAULT_CLEAN_URLS")]
+	pub(crate) default_clean_urls: Option<String>,
 }
 
 impl Config {
@@ -163,6 +165,7 @@ impl Config {
 			default_remove_default_feeds: parse("REDLIB_DEFAULT_REMOVE_DEFAULT_FEEDS"),
 			source_url: parse("REDLIB_SOURCE_URL"),
 			default_geo_filter: parse("REDLIB_DEFAULT_GEO_FILTER"),
+			default_clean_urls: parse("REDLIB_DEFAULT_CLEAN_URLS"),
 		}
 	}
 }
@@ -195,6 +198,7 @@ fn get_setting_from_config(name: &str, config: &Config) -> Option<String> {
 		"REDLIB_DEFAULT_REMOVE_DEFAULT_FEEDS" => config.default_remove_default_feeds.clone(),
 		"REDLIB_SOURCE_URL" => config.source_url.clone(),
 		"REDLIB_DEFAULT_GEO_FILTER" => config.default_geo_filter.clone(),
+		"REDLIB_DEFAULT_CLEAN_URLS" => config.default_clean_urls.clone(),
 		_ => None,
 	}
 }
