@@ -1107,7 +1107,7 @@ pub fn clean_url(url: String) -> String {
 	let mut cleaned_url = url.clone();
 	if is_external_url {
 		let cleaner = URL_CLEANER.lock().unwrap();
-		cleaned_url = cleaner.clear_single_url_str(&cleaned_url.as_str()).expect("Unable to clean the URL.").as_ref().to_owned();
+		cleaned_url = cleaner.clear_single_url_str(cleaned_url.as_str()).expect("Unable to clean the URL.").as_ref().to_owned();
 	}
 	cleaned_url
 }
@@ -1730,7 +1730,7 @@ mod tests {
 		};
 		let urlencoded = serde_urlencoded::to_string(prefs).expect("Failed to serialize Prefs");
 
-		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off&geo_filter=GLOBAL");
+		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off&geo_filter=GLOBAL&clean_urls=off");
 	}
 
 	#[test]
