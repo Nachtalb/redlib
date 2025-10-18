@@ -12,7 +12,7 @@ use htmlescape;
 use log::error;
 use chrono::DateTime;
 use regex::Regex;
-use revision::revisioned;
+use revision::{revisioned, Error};
 use crate::redgifs;
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -23,7 +23,7 @@ use std::env;
 use std::io::{Read, Write};
 use std::str::FromStr;
 use std::string::ToString;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock};
 use time::{macros::format_description, Duration, OffsetDateTime};
 use url::Url;
 use rss::{Enclosure, Guid, Item};
@@ -632,7 +632,7 @@ pub struct Params {
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[revisioned(revision = 1)]
+#[revisioned(revision = 2)]
 pub struct Preferences {
 	#[revision(start = 1)]
 	#[serde(skip_serializing, skip_deserializing)]
@@ -681,8 +681,9 @@ pub struct Preferences {
 	pub hide_score: String,
 	#[revision(start = 1)]
 	pub remove_default_feeds: String,
-	#[revision(start = 1)]
+	#[revision(start = 2, default_fn = "default_geo_filter")]
 	pub geo_filter: String,
+	#[revision(start = 2, default_fn = "default_clean_urls")]
 	pub clean_urls: String,
 }
 
@@ -759,6 +760,12 @@ impl Preferences {
 	}
 	pub fn to_bincode_str(&self) -> Result<String, String> {
 		Ok(base2048::encode(&self.to_compressed_bincode()?))
+	}
+	fn default_geo_filter(_revision: u16) -> Result<String, Error> {
+		Ok("GLOBAL".to_owned())
+	}
+	fn default_clean_urls(_revision: u16) -> Result<String, Error> {
+		Ok("off".to_owned())
 	}
 }
 
@@ -1097,7 +1104,7 @@ pub fn format_url(url: &str) -> String {
 }
 
 // Remove tracking query params
-static URL_CLEANER: LazyLock<Mutex<UrlCleaner>> = LazyLock::new(|| Mutex::new(UrlCleaner::from_embedded_rules().expect("Failed to initialize UrlCleaner")));
+static URL_CLEANER: LazyLock<Arc<UrlCleaner>> = LazyLock::new(|| Arc::new(UrlCleaner::from_embedded_rules().expect("Failed to initialize UrlCleaner")));
 
 pub fn clean_url(url: String) -> String {
 	let is_external_url = match Url::parse(url.as_str()) {
@@ -1106,8 +1113,10 @@ pub fn clean_url(url: String) -> String {
 	};
 	let mut cleaned_url = url.clone();
 	if is_external_url {
-		let cleaner = URL_CLEANER.lock().unwrap();
-		cleaned_url = cleaner.clear_single_url_str(cleaned_url.as_str()).expect("Unable to clean the URL.").as_ref().to_owned();
+		cleaned_url = match URL_CLEANER.clear_single_url_str(cleaned_url.as_str()) {
+			Ok(cleaned_result) => cleaned_result.as_ref().to_owned(),
+			_ => cleaned_url,
+		}
 	}
 	cleaned_url
 }
