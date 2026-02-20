@@ -36,8 +36,8 @@ pub static HTTPS_CONNECTOR: LazyLock<HttpsConnector<ProxyConnector>> = LazyLock:
 		.with_tls_config(
 			rustls::ClientConfig::builder()
 			.with_cipher_suites(&[
-				rustls::cipher_suite::TLS13_AES_256_GCM_SHA384,
 				rustls::cipher_suite::TLS13_AES_128_GCM_SHA256,
+				rustls::cipher_suite::TLS13_AES_256_GCM_SHA384,
 				rustls::cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
 				rustls::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 				rustls::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
@@ -53,6 +53,7 @@ pub static HTTPS_CONNECTOR: LazyLock<HttpsConnector<ProxyConnector>> = LazyLock:
 			.with_no_client_auth(),
 		)
 		.https_only()
+		.enable_http1()
 		.enable_http2()
 		.wrap_connector(proxy_connector)
 });
