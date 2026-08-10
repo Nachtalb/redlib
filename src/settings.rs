@@ -24,7 +24,7 @@ struct SettingsTemplate {
 
 // CONSTANTS
 
-const PREFS: [&str; 21] = [
+const PREFS: [&str; 23] = [
 	"theme",
 	"front_page",
 	"layout",
@@ -46,6 +46,8 @@ const PREFS: [&str; 21] = [
 	"remove_default_feeds",
 	"geo_filter",
 	"clean_urls",
+	"posts_per_page",
+	"max_comment_thread_depth",
 ];
 
 pub static GEO_FILTERS: [(&str, &str); 250] = [
