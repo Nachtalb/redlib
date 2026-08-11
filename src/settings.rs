@@ -20,6 +20,7 @@ use url::form_urlencoded;
 struct SettingsTemplate {
 	prefs: Preferences,
 	url: String,
+	return_url: String,
 }
 
 // CONSTANTS
@@ -308,9 +309,14 @@ pub static GEO_FILTERS: [(&str, &str); 250] = [
 /// Retrieve cookies from request "Cookie" header
 pub async fn get(req: Request<Body>) -> Result<Response<Body>, String> {
 	let url = req.uri().to_string();
+	let form = url::form_urlencoded::parse(req.uri().query().unwrap_or_default().as_bytes()).collect::<HashMap<_, _>>();
 	Ok(template(&SettingsTemplate {
 		prefs: Preferences::new(&req),
 		url,
+		return_url: match form.get("return_to") {
+			Some(url) => url.clone().to_string(),
+			None => String::new(),
+		},
 	}))
 }
 
@@ -339,7 +345,10 @@ pub async fn set(req: Request<Body>) -> Result<Response<Body>, String> {
 
 	let form = url::form_urlencoded::parse(&body_bytes).collect::<HashMap<_, _>>();
 
-	let mut response = redirect("/settings");
+	let mut response = match form.get("return_to") {
+		Some(value) => redirect(value),
+		None => redirect("/settings"),
+	};
 
 	for &name in &PREFS {
 		match form.get(name) {
