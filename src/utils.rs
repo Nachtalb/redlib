@@ -1195,7 +1195,7 @@ fn rewrite_giphy_links(comment: &str) -> String {
 		.replace_all(comment, |caps: &regex::Captures| {
 			let id = &caps[1];
 			format!(
-				r#"<div class="giphy-embed-container"><a href="/giphy/{id}/gif"><video class="giphy-embed" loop poster="/giphy/{id}/gif"><source src="/giphy/{id}/mp4" type="video/mp4"></video></a></div>"#
+				r#"<div class="giphy-embed-container"><a href="/giphy/{id}/gif"><video class="giphy-embed" src="/giphy/{id}/mp4" autoplay muted loop playsinline></video></a></div>"#
 			)
 		})
 		.to_string()
