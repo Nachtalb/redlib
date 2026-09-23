@@ -7,9 +7,12 @@ use askama::Template;
 use cookie::Cookie;
 use hyper::{Body, Request, Response};
 use libflate::deflate::{Decoder, Encoder};
+use htmlescape;
 use log::error;
+use chrono::DateTime;
 use regex::Regex;
 use revision::revisioned;
+use crate::redgifs;
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
@@ -22,6 +25,7 @@ use std::string::ToString;
 use std::sync::LazyLock;
 use time::{macros::format_description, Duration, OffsetDateTime};
 use url::Url;
+use rss::{Enclosure, Guid, Item};
 
 /// Write a message to stderr on debug mode. This function is a no-op on
 /// release code.
@@ -191,8 +195,11 @@ impl Media {
 		let secure_media = &data["secure_media"]["reddit_video"];
 		let crosspost_parent_media = &data["crosspost_parent_list"][0]["secure_media"]["reddit_video"];
 
-		// If post is a video, return the video
-		let (post_type, url_val, alt_url_val) = if data_preview["fallback_url"].is_string() {
+		// Check RedGifs FIRST before Reddit's cached fallback videos, then other video sources
+		let domain = data["domain"].as_str().unwrap_or_default();
+		let (post_type, url_val, alt_url_val) = if redgifs::is_redgifs_domain(domain) {
+			("video", &data["url"], None)
+		} else if data_preview["fallback_url"].is_string() {
 			(
 				if data_preview["is_gif"].as_bool().unwrap_or(false) { "gif" } else { "video" },
 				&data_preview["fallback_url"],
@@ -209,6 +216,12 @@ impl Media {
 				if crosspost_parent_media["is_gif"].as_bool().unwrap_or(false) { "gif" } else { "video" },
 				&crosspost_parent_media["fallback_url"],
 				Some(&crosspost_parent_media["hls_url"]),
+			)
+		} else if data["post_hint"].as_str().unwrap_or("") == "rich:video" && data_preview["fallback_url"].is_string() {
+			(
+				if data_preview["is_gif"].as_bool().unwrap_or(false) { "gif" } else { "video" },
+				&data_preview["fallback_url"],
+				Some(&data_preview["hls_url"]),
 			)
 		} else if data["post_hint"].as_str().unwrap_or("") == "image" {
 			// Handle images, whether GIFs or pics
@@ -667,6 +680,8 @@ pub struct Preferences {
 	pub hide_score: String,
 	#[revision(start = 1)]
 	pub remove_default_feeds: String,
+	#[revision(start = 1)]
+	pub geo_filter: String,
 }
 
 fn serialize_vec_with_plus<S>(vec: &[String], serializer: S) -> Result<S::Ok, S::Error>
@@ -725,6 +740,7 @@ impl Preferences {
 			hide_awards: setting(req, "hide_awards"),
 			hide_score: setting(req, "hide_score"),
 			remove_default_feeds: setting(req, "remove_default_feeds"),
+			geo_filter: setting_or_default(req, "geo_filter", "GLOBAL".to_string()),
 		}
 	}
 
@@ -1004,7 +1020,7 @@ static REGEX_URL_WWW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://w
 static REGEX_URL_OLD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://old\.reddit\.com/(.*)").unwrap());
 static REGEX_URL_NP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://np\.reddit\.com/(.*)").unwrap());
 static REGEX_URL_PLAIN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://reddit\.com/(.*)").unwrap());
-static REGEX_URL_VIDEOS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://v\.redd\.it/(.*)/DASH_([0-9]{2,4}(\.mp4|$|\?source=fallback))").unwrap());
+static REGEX_URL_VIDEOS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://v\.redd\.it/(.*)/(DASH|CMAF)_([0-9]{2,4}(\.mp4|$|\?source=fallback))").unwrap());
 static REGEX_URL_VIDEOS_HLS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://v\.redd\.it/(.+)/(HLSPlaylist\.m3u8.*)$").unwrap());
 static REGEX_URL_IMAGES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://i\.redd\.it/(.*)").unwrap());
 static REGEX_URL_THUMBS_A: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://a\.thumbs\.redditmedia\.com/(.*)").unwrap());
@@ -1014,6 +1030,7 @@ static REGEX_URL_PREVIEW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?
 static REGEX_URL_EXTERNAL_PREVIEW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://external\-preview\.redd\.it/(.*)").unwrap());
 static REGEX_URL_STYLES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://styles\.redditmedia\.com/(.*)").unwrap());
 static REGEX_URL_STATIC_MEDIA: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://www\.redditstatic\.com/(.*)").unwrap());
+static REGEX_URL_REDGIFS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://(?:www\.|v\d+\.)?redgifs\.com/watch/([^?#]*)").unwrap());
 
 /// Direct urls to proxy if proxy is enabled
 pub fn format_url(url: &str) -> String {
@@ -1027,6 +1044,7 @@ pub fn format_url(url: &str) -> String {
 				regex.captures(url).map_or(String::new(), |caps| match segments {
 					1 => [format, &caps[1]].join(""),
 					2 => [format, &caps[1], "/", &caps[2]].join(""),
+					3 => [format, &caps[1], "/", &caps[2], "/", &caps[3]].join(""),
 					_ => String::new(),
 				})
 			};
@@ -1057,7 +1075,7 @@ pub fn format_url(url: &str) -> String {
 				"old.reddit.com" => capture(&REGEX_URL_OLD, "/", 1),
 				"np.reddit.com" => capture(&REGEX_URL_NP, "/", 1),
 				"reddit.com" => capture(&REGEX_URL_PLAIN, "/", 1),
-				"v.redd.it" => chain!(capture(&REGEX_URL_VIDEOS, "/vid/", 2), capture(&REGEX_URL_VIDEOS_HLS, "/hls/", 2)),
+				"v.redd.it" => chain!(capture(&REGEX_URL_VIDEOS, "/vid/", 3), capture(&REGEX_URL_VIDEOS_HLS, "/hls/", 2)),
 				"i.redd.it" => capture(&REGEX_URL_IMAGES, "/img/", 1),
 				"a.thumbs.redditmedia.com" => capture(&REGEX_URL_THUMBS_A, "/thumb/a/", 1),
 				"b.thumbs.redditmedia.com" => capture(&REGEX_URL_THUMBS_B, "/thumb/b/", 1),
@@ -1066,6 +1084,9 @@ pub fn format_url(url: &str) -> String {
 				"external-preview.redd.it" => capture(&REGEX_URL_EXTERNAL_PREVIEW, "/preview/external-pre/", 1),
 				"styles.redditmedia.com" => capture(&REGEX_URL_STYLES, "/style/", 1),
 				"www.redditstatic.com" => capture(&REGEX_URL_STATIC_MEDIA, "/static/", 1),
+				"www.redgifs.com" => capture(&REGEX_URL_REDGIFS, "/redgifs/", 1),
+				"redgifs.com" => capture(&REGEX_URL_REDGIFS, "/redgifs/", 1),
+				d if d.starts_with("v") && d.ends_with(".redgifs.com") => capture(&REGEX_URL_REDGIFS, "/redgifs/", 1),
 				_ => url.to_string(),
 			}
 		})
@@ -1108,6 +1129,10 @@ pub fn rewrite_urls(input_text: &str) -> String {
 
 	// Remove (html-encoded) "\" from URLs.
 	text1 = text1.replace("%5C", "").replace("\\_", "_");
+
+	/* Remove paragraphs that only contain zero width spaces.
+	Reddit ignores these in their formatting so we want to remove them so they don't mess with ours. */
+	text1 = text1.replace("<p>&#8203;</p>", "").replace("<p>&#x200B;</p>", "");
 
 	// Rewrite external media previews to Redlib
 	loop {
@@ -1156,6 +1181,24 @@ pub fn rewrite_urls(input_text: &str) -> String {
 				.replace(&image_to_replace, &_image_replacement)
 		}
 	}
+}
+
+// Match Giphy URLs in comment anchor tags, capturing the GIF ID
+// Handles: giphy.com/gifs/ID, media.giphy.com/media/ID, i.giphy.com/ID
+static GIPHY_EMBED_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+	Regex::new(r#"(?i)<a\s+href="https?://(?:www\.)?(?:giphy\.com/(?:gifs|clips)|media\.giphy\.com/media|i\.giphy\.com)/([a-z0-9]+)[^"]*"[^>]*>[^<]*</a>"#).unwrap()
+});
+
+/// Rewrite Giphy URLs in comment body to embedded video elements
+fn rewrite_giphy_links(comment: &str) -> String {
+	GIPHY_EMBED_REGEX
+		.replace_all(comment, |caps: &regex::Captures| {
+			let id = &caps[1];
+			format!(
+				r#"<div class="giphy-embed-container"><a href="/giphy/{id}/gif"><video class="giphy-embed" loop poster="/giphy/{id}/gif"><source src="/giphy/{id}/mp4" type="video/mp4"></video></a></div>"#
+			)
+		})
+		.to_string()
 }
 
 // These links all follow a pattern of "https://reddit-econ-prod-assets-permanent.s3.amazonaws.com/asset-manager/SUBREDDIT_ID/RANDOM_FILENAME.png"
@@ -1236,7 +1279,10 @@ pub fn rewrite_emotes(media_metadata: &Value, comment: String) -> String {
 	comment = render_bullet_lists(&comment);
 
 	// Call rewrite_urls() to transform any other Reddit links
-	rewrite_urls(&comment)
+	let comment = rewrite_urls(&comment);
+
+	// Rewrite Giphy links to embedded videos
+	rewrite_giphy_links(&comment)
 }
 
 /// Format vote count to a string that will be displayed.
@@ -1381,6 +1427,12 @@ pub fn disable_indexing() -> bool {
 	}
 }
 
+/// Returns the currently configured source code URL to display in the footer.
+/// Defaults to the upstream Github repository URL when not explicitly configured.
+pub fn get_source_url() -> String {
+	get_setting("REDLIB_SOURCE_URL").unwrap_or("https://github.com/redlib-org/redlib".into())
+}
+
 /// Determines if a request should redirect to a NSFW landing gate.
 pub fn should_be_nsfw_gated(req: &Request<Body>, _req_url: &str) -> bool {
 	(setting(req, "show_nsfw") != "on") || sfw_only()
@@ -1449,6 +1501,117 @@ pub fn to_absolute_url(relative_path: &str) -> String {
 	format!("{}{}", config::get_setting("REDLIB_FULL_URL").unwrap_or_default(), relative_path)
 }
 
+// =====================================================
+// RSS Feed Helpers
+// =====================================================
+
+/// Build an RSS item from a Post, with proper enclosure, GUID, and media embed
+pub fn build_rss_item(post: &Post) -> Item {
+	let mut item = Item {
+		title: Some(post.title.to_string()),
+		link: Some(to_absolute_url(&post.permalink)),
+		author: Some(post.author.name.to_string()),
+		pub_date: Some(DateTime::from_timestamp(post.created_ts as i64, 0).unwrap_or_default().to_rfc2822()),
+		guid: Some(Guid {
+			value: to_absolute_url(&post.permalink),
+			permalink: true,
+		}),
+		..Default::default()
+	};
+
+	// Build description
+	let description_str = match post.post_type.as_str() {
+		"gallery" => format!(
+			"<a href='{}'>Gallery with {} images</a>",
+			to_absolute_url(&post.permalink),
+			post.gallery.len()
+		),
+		_ => format!("<a href='{}'>Comments</a>", to_absolute_url(&post.permalink)),
+	};
+	item.set_description(description_str.clone());
+
+	// Build content:encoded — embed media + body
+	let image_html = build_media_html(&post);
+	let body = unescape_html(&post.body);
+	let content = if !image_html.is_empty() || !body.is_empty() {
+		format!("{}{}", image_html, body)
+	} else {
+		description_str
+	};
+	item.set_content(content);
+
+	// Set enclosure for media posts
+	if let Some(enclosure) = get_rss_image(post) {
+		item.set_enclosure(enclosure);
+	}
+
+	item
+}
+
+/// Generate the HTML for embedding media (images/videos) in RSS content
+/// Uses proxied Redlib URLs and inline styles to fit the reader window
+fn build_media_html(post: &Post) -> String {
+	match post.post_type.as_str() {
+		"image" => {
+			let url = to_absolute_url(&post.media.url);
+			format!("<a href=\"{}\"><img src=\"{}\" width=\"100%\" /></a><br/>", url, url)
+		}
+		"gallery" => {
+			post.gallery.iter().map(|media| {
+				let url = to_absolute_url(&media.url);
+				format!("<a href=\"{}\"><img src=\"{}\" width=\"100%\" /></a><br/>", url, url)
+			}).collect::<Vec<_>>().join("\n")
+		}
+		"video" | "gif" => {
+			let poster = to_absolute_url(&post.media.poster);
+			let video_url = to_absolute_url(&post.media.url);
+			format!(
+				"<video controls preload=\"metadata\" poster=\"{}\" width=\"100%\"><source src=\"{}\" type=\"video/mp4\" /></video><br/>",
+				poster, video_url
+			)
+		}
+		_ => String::new(),
+	}
+}
+
+/// Decodes HTML entities like &lt;/&gt; back to their character equivalents
+fn unescape_html(html: &str) -> String {
+	htmlescape::decode_html(html).expect("failed to decode HTML entities")
+}
+
+/// Create an RSS enclosure for the first image of a post
+/// Uses proxied Redlib URLs
+fn get_rss_image(post: &Post) -> Option<Enclosure> {
+	let image_url = match post.post_type.as_str() {
+		"image" => Some(to_absolute_url(&post.media.url)),
+		"gallery" => post.gallery.get(0).map(|media| to_absolute_url(&media.url)),
+		"gif" | "video" => Some(to_absolute_url(&post.media.poster)),
+		_ => None,
+	};
+
+	image_url.map(|url| {
+		let mut enclosure = Enclosure::default();
+		enclosure.set_mime_type(get_mime_type(&url));
+		enclosure.set_url(url);
+		enclosure.set_length("0");
+		enclosure
+	})
+}
+
+/// Determines the MIME type based on file extension in a URL
+fn get_mime_type(url: &str) -> &'static str {
+	let path = url.split('?').next().unwrap_or(url);
+	let extension = path.rsplit('.').next().unwrap_or("").to_lowercase();
+	match extension.as_str() {
+		"jpg" | "jpeg" => "image/jpeg",
+		"png" => "image/png",
+		"gif" => "image/gif",
+		"webp" => "image/webp",
+		"svg" => "image/svg+xml",
+		_ => "application/octet-stream",
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::{deflate_compress, deflate_decompress, format_num, format_url, render_bullet_lists, rewrite_emotes, rewrite_urls, url_path_basename, Post, Preferences};
@@ -1501,7 +1664,7 @@ mod tests {
 			format_url("https://preview.redd.it/qwerty.jpg?auto=webp&s=asdf"),
 			"/preview/pre/qwerty.jpg?auto=webp&s=asdf"
 		);
-		assert_eq!(format_url("https://v.redd.it/foo/DASH_360.mp4?source=fallback"), "/vid/foo/360.mp4");
+		assert_eq!(format_url("https://v.redd.it/foo/DASH_360.mp4?source=fallback"), "/vid/foo/DASH/360.mp4");
 		assert_eq!(
 			format_url("https://v.redd.it/foo/HLSPlaylist.m3u8?a=bar&v=1&f=sd"),
 			"/hls/foo/HLSPlaylist.m3u8?a=bar&v=1&f=sd"
@@ -1543,10 +1706,11 @@ mod tests {
 			hide_awards: "off".to_owned(),
 			hide_score: "off".to_owned(),
 			remove_default_feeds: "off".to_owned(),
+			geo_filter: "GLOBAL".to_owned(),
 		};
 		let urlencoded = serde_urlencoded::to_string(prefs).expect("Failed to serialize Prefs");
 
-		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off");
+		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off&geo_filter=GLOBAL");
 	}
 
 	#[test]
@@ -1655,9 +1819,9 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 	}
 
 	static KNOWN_GOOD_CONFIGS: &[&str] = &[
-		"ఴӅβØØҞÉဏႢձĬ༧ȒʯऌԔӵ୮༏",
-		"ਧՊΥÀÃǎƱГ۸ඣമĖฤ႙ʟาúໜϾௐɥঀĜໃહཞઠѫҲɂఙ࿔ǲઉƲӟӻĻฅΜδ໖ԜǗဖငƦơ৶Ą௩ԹʛใЛʃශаΏ",
-		"ਧԩΥÀÃÎŠ౭൩ඔႠϼҭöҪƸռઇԾॐნɔາǒՍҰच௨ಖມŃЉŐདƦ๙ϩএఠȝഽйʮჯඒϰळՋ௮ສ৵ऎΦѧਹಧଟƙŃ३î༦ŌပղयƟแҜ།",
+		"ఴǐΪØÃҤÉఅഐႮვÆվƟ๑ഈ௲º",
+		"ਧճΥÀÃǙŨ౭ѰЉਠ༃ඍୟϊÓႼઞƶǲѾҠŶဿৠǡȈЧတĄঘशƕİԪӥОϥΪѼĔજɍႰůƅıęႵຈഛशખӺफƊўચபūগລનаΦǮʀԅཪ٦ಟซωॶԓԙµ",
+		"ਧՎΥºÃǖবб྾цҗҢจഘĦਝ೨ծമ۞তʦཤཎຟՐȸ൯ങஏ९ȹ૯нե࿑Ʋථఐ۳ԊຍखʟషၡŁलſԇચਆॹǕϻΪজԯǐĦЅթȣơϱǃඛϾຝϤ໐Քµ",
 	];
 
 	#[test]

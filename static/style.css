@@ -706,6 +706,10 @@ select,
     margin-bottom: 0;
 }
 
+#searchbox:focus-within {   
+    outline: 2px solid var(--accent);
+}
+
 #searchbox > *,
 #sort_submit {
     background: var(--highlighted);
@@ -1210,7 +1214,6 @@ a.search_subreddit:hover {
 .post_body pre {
     background: var(--background);
     overflow-x: auto;
-    margin: 10px 0;
     padding: 10px;
 }
 
@@ -1385,12 +1388,19 @@ a.search_subreddit:hover {
     display: flex;
 }
 
+.giphy-embed-container,
 .comment img {
     max-width: 50%;
     height: auto;
 }
 
+.giphy-embed {
+    width: 100%;
+    display: flex;
+}
+
 @media screen and (max-width: 500px) {
+    .giphy-embed-container,
     .comment img {
         max-width: 80%;
         height: auto;
@@ -1450,6 +1460,19 @@ a.search_subreddit:hover {
     flex-grow: 1;
     flex-shrink: 1;
     min-width: 0;
+    position: relative;
+}
+
+.comment_right[open] > .comment_data > .comment_collapse {
+    position: absolute;  /* relative to .comment_right */
+    width: 20px;
+    left: -35px;
+    top: 45px;
+    height: calc(100% - 45px);
+}
+
+.comment:has(> .comment_right[open] > .comment_data > .comment_collapse:hover) > .comment_left * {
+    background: var(--highlighted);
 }
 
 .comment:has([id]) .comment_data > * {
@@ -1748,17 +1771,16 @@ input[type="submit"] {
     width: 100%;
 }
 
-.md > p:not(:first-child) {
-    margin-top: 20px;
+.md > :first-child {
+    margin-top: 0;
 }
 
-.md > figure:first-of-type {
-    margin-top: 5px;
-    margin-bottom: 0px;
+.md > :last-child {
+    margin-bottom: 0;
 }
 
-.md > figure:not(:first-of-type) {
-    margin-top: 10px;
+.md > * {
+    margin-bottom: 1.25rem;
 }
 
 .md h1 {
@@ -1778,6 +1800,10 @@ input[type="submit"] {
 }
 .md h6 {
     font-size: 12px;
+}
+
+.md h1, h2, h3, h4, h5, h6 {
+    margin: 1.25rem 0 .75rem;
 }
 
 .md blockquote {
@@ -1818,7 +1844,6 @@ input[type="submit"] {
 .md pre {
     background: var(--outside);
     padding: 20px;
-    margin-top: 10px;
     border-radius: 5px;
     box-shadow: var(--shadow);
     overflow: auto;
@@ -1978,7 +2003,7 @@ th {
         max-width: 100%;
     }
     #user { margin: 0 0 20px; }
-    
+
     body.fixed_navbar {
         min-height: calc(100vh - 75px);
         padding-top: 45px;
@@ -2063,6 +2088,14 @@ th {
         margin-top: -5px;
     }
 
+    .comment_right[open] > .comment_data > .comment_collapse {
+        /* relative to .comment_right */
+        width: 15px;
+        left: -29px;
+        top: 35px;
+        height: calc(100% - 35px);
+    }
+
     .line {
         margin-left: 5px;
     }
@@ -2075,7 +2108,8 @@ th {
         margin-left: 12px;
     }
     .comment_data {
-        margin-left: 12px;
+        margin-left: 8px;
+        padding-left: 8px;
     }
 
     .user-comment .comment_data {

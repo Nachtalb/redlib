@@ -257,12 +257,15 @@ async fn main() {
 		.at("/check_update.js")
 		.get(|_| resource(include_str!("../static/check_update.js"), "text/javascript", false).boxed());
 	app.at("/copy.js").get(|_| resource(include_str!("../static/copy.js"), "text/javascript", false).boxed());
+	app
+		.at("/static/keyboardcommands.js")
+		.get(|_| resource(include_str!("../static/keyboardcommands.js"), "text/javascript", false).boxed());
 
 	app.at("/commits.atom").get(|_| async move { proxy_commit_info().await }.boxed());
 	app.at("/instances.json").get(|_| async move { proxy_instances().await }.boxed());
 
 	// Proxy media through Redlib
-	app.at("/vid/:id/:size").get(|r| proxy(r, "https://v.redd.it/{id}/DASH_{size}").boxed());
+	app.at("/vid/:id/:prefix/:size").get(|r| proxy(r, "https://v.redd.it/{id}/{prefix}_{size}").boxed());
 	app.at("/hls/:id/*path").get(|r| proxy(r, "https://v.redd.it/{id}/{path}").boxed());
 	app.at("/img/*path").get(|r| proxy(r, "https://i.redd.it/{path}").boxed());
 	app.at("/thumb/:point/:id").get(|r| proxy(r, "https://{point}.thumbs.redditmedia.com/{id}").boxed());
@@ -276,6 +279,10 @@ async fn main() {
 	app.at("/preview/:loc/:id").get(|r| proxy(r, "https://{loc}view.redd.it/{id}").boxed());
 	app.at("/style/*path").get(|r| proxy(r, "https://styles.redditmedia.com/{path}").boxed());
 	app.at("/static/*path").get(|r| proxy(r, "https://www.redditstatic.com/{path}").boxed());
+	app.at("/giphy/:id/:ext").get(|r| proxy(r, "https://media.giphy.com/media/{id}/giphy.{ext}").boxed());
+
+	// RedGifs proxy with lazy loading
+	app.at("/redgifs/*path").get(|req| redlib::redgifs::handler(req).boxed());
 
 	// Browse user profile
 	app
@@ -372,10 +379,26 @@ async fn main() {
 		Box::pin(async move {
 			let sub = req.param("sub").unwrap_or_default();
 			match req.param("id").as_deref() {
-				// Share link
+				// Subreddit post share link
 				Some(id) if (8..12).contains(&id.len()) => match canonical_path(format!("/r/{sub}/s/{id}"), 3).await {
 					Ok(Some(path)) => Ok(redirect(&path)),
 					Ok(None) => error(req, "Post ID is invalid. It may point to a post on a community that has been banned.").await,
+					Err(e) => error(req, &e).await,
+				},
+
+				// Error message for unknown pages
+				_ => error(req, "Nothing here").await,
+			}
+		})
+	});
+	app.at("/u/:name/s/:id").get(|req: Request<Body>| {
+		Box::pin(async move {
+			let name = req.param("name").unwrap_or_default();
+			match req.param("id").as_deref() {
+				// User post share link
+				Some(id) if (8..12).contains(&id.len()) => match canonical_path(format!("/u/{name}/s/{id}"), 3).await {
+					Ok(Some(path)) => Ok(redirect(&path)),
+					Ok(None) => error(req, "Post ID is invalid. It may point to a post on a user that has been banned.").await,
 					Err(e) => error(req, &e).await,
 				},
 
