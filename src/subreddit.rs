@@ -8,9 +8,7 @@ use crate::utils::{
 use askama::Template;
 use cookie::Cookie;
 use hyper::{Body, Request, Response};
-use regex::Regex;
 use rss::ChannelBuilder;
-use std::sync::LazyLock;
 use time::{Duration, OffsetDateTime};
 
 // STRUCTS
@@ -54,13 +52,11 @@ struct WallTemplate {
 	url: String,
 }
 
-static GEO_FILTER_MATCH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"geo_filter=(?<region>\w+)").unwrap());
-
 // SERVICES
 pub async fn community(req: Request<Body>) -> Result<Response<Body>, String> {
+	let prefs = Preferences::new(&req);
 	// Build Reddit API path
 	let root = req.uri().path() == "/";
-	let query = req.uri().query().unwrap_or_default().to_string();
 	let subscribed = setting(&req, "subscriptions");
 	let front_page = setting(&req, "front_page");
 	let remove_default_feeds = setting(&req, "remove_default_feeds") == "on";
@@ -130,11 +126,7 @@ pub async fn community(req: Request<Body>) -> Result<Response<Body>, String> {
 
 	let mut params = String::from("&raw_json=1");
 	if sub_name == "popular" {
-		let geo_filter = match GEO_FILTER_MATCH.captures(&query) {
-			Some(geo_filter) => geo_filter["region"].to_string(),
-			None => "GLOBAL".to_owned(),
-		};
-		params.push_str(&format!("&geo_filter={geo_filter}"));
+		params.push_str(&format!("&geo_filter={}", prefs.geo_filter));
 	}
 
 	let path = format!("/r/{}/{sort}.json?{}{params}", sub_name.replace('+', "%2B"), req.uri().query().unwrap_or_default());
@@ -149,7 +141,7 @@ pub async fn community(req: Request<Body>) -> Result<Response<Body>, String> {
 			posts: Vec::new(),
 			sort: (sort, param(&path, "t").unwrap_or_default()),
 			ends: (param(&path, "after").unwrap_or_default(), String::new()),
-			prefs: Preferences::new(&req),
+			prefs,
 			url,
 			redirect_url,
 			is_filtered: true,
