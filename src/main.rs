@@ -219,6 +219,8 @@ async fn main() {
 		}
 	}
 
+	app.at("/healthz").get(|_| resource("ok", "text/plain", false).boxed());
+
 	// Read static files
 	app.at("/style.css").get(|_| style().boxed());
 	app

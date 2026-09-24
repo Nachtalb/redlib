@@ -23,6 +23,9 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY_IMAGE }}
+          labels: |
+            org.opencontainers.image.description=Private front-end for Reddit
+            org.opencontainers.image.licenses=AGPL-3.0-only
           tags: |
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
@@ -41,7 +44,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.alpine
+          file: Dockerfile.distroless
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
