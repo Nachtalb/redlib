@@ -1,3 +1,4 @@
+use crate::body::Body;
 use crate::{
 	config::{Config, CONFIG},
 	server::RequestExt,
@@ -5,7 +6,7 @@ use crate::{
 };
 use askama::Template;
 use build_html::{Container, Html, HtmlContainer, Table};
-use hyper::{http::Error, Body, Request, Response};
+use hyper::{http::Error, Request, Response};
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 use time::OffsetDateTime;

@@ -1,4 +1,5 @@
 #![allow(clippy::cmp_owned)]
+use crate::body::Body;
 use crate::client::json;
 use crate::config::get_setting;
 use crate::server::RequestExt;
@@ -8,7 +9,7 @@ use crate::utils::{
 	Preferences,
 };
 use askama::Template;
-use hyper::{Body, Request, Response};
+use hyper::{Request, Response};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;

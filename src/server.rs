@@ -6,14 +6,12 @@ use cached::proc_macro::cached;
 use cookie::Cookie;
 use core::f64;
 use futures_lite::{future::Boxed, Future, FutureExt};
-use hyper::{
-	body,
-	body::HttpBody,
-	header,
-	service::{make_service_fn, service_fn},
-	HeaderMap,
+use http_body::Body as _;
+use hyper::{body::Incoming, header, service::service_fn, HeaderMap, Method, Request, Response};
+use hyper_util::{
+	rt::{TokioExecutor, TokioIo, TokioTimer},
+	server::{conn::auto, graceful::GracefulShutdown},
 };
-use hyper::{Body, Method, Request, Response, Server as HyperServer};
 use libflate::gzip;
 use route_recognizer::{Params, Router};
 use std::{
@@ -27,7 +25,7 @@ use std::{
 };
 use time::OffsetDateTime;
 
-use crate::{config, dbg_msg};
+use crate::{body::Body, config, dbg_msg};
 
 const BANNED_USER_AGENTS: &[&str] = &[
 	"AI2Bot",
@@ -304,106 +302,130 @@ impl Server {
 		}
 	}
 
-	pub fn listen(self, addr: &str) -> Boxed<Result<(), hyper::Error>> {
-		let make_svc = make_service_fn(move |_conn| {
-			// For correct borrowing, these values need to be borrowed
-			let router = self.router.clone();
-			let default_headers = self.default_headers.clone();
-
-			// This is the `Service` that will handle the connection.
-			// `service_fn` is a helper to convert a function that
-			// returns a Response into a `Service`.
-			// let shared_router = router.clone();
-			async move {
-				Ok::<_, String>(service_fn(move |req: Request<Body>| {
-					let req_headers = req.headers().clone();
-					let def_headers = default_headers.clone();
-
-					// Catch robots.txt-disrespecful bots who still identify themselves
-					// Typically justified as "human triggered" actions.
-					if match config::get_setting("REDLIB_ROBOTS_DISABLE_INDEXING") {
-						Some(val) => val == "on",
-						None => false,
-					} {
-						if let Some(user_agent) = req_headers.get("user-agent") {
-							if let Ok(user_agent_str) = user_agent.to_str() {
-								for banned in BANNED_USER_AGENTS {
-									if user_agent_str.contains(banned) {
-										return new_boilerplate(def_headers, req_headers, 403, Body::from("Forbidden")).boxed();
-									}
-								}
-							}
-						}
-					}
-
-					// Remove double slashes and decode encoded slashes
-					let mut path = req.uri().path().replace("//", "/").replace("%2F", "/");
-
-					// Remove trailing slashes
-					if path != "/" && path.ends_with('/') {
-						path.pop();
-					}
-
-					// Replace HEAD with GET for routing
-					let (method, is_head) = match req.method() {
-						&Method::HEAD => (&Method::GET, true),
-						method => (method, false),
-					};
-
-					// Match the visited path with an added route
-					match router.recognize(&format!("/{}{}", method.as_str(), path)) {
-						// If a route was configured for this path
-						Ok(found) => {
-							let mut parammed = req;
-							parammed.set_params(found.params().clone());
-
-							// Run the route's function
-							let func = (found.handler().to_owned().to_owned())(parammed);
-							async move {
-								match func.await {
-									Ok(mut res) => {
-										res.headers_mut().extend(def_headers);
-										if is_head {
-											*res.body_mut() = Body::empty();
-										} else {
-											let _ = compress_response(&req_headers, &mut res).await;
-										}
-
-										Ok(res)
-									}
-									Err(msg) => new_boilerplate(def_headers, req_headers, 500, if is_head { Body::empty() } else { Body::from(msg) }).await,
-								}
-							}
-							.boxed()
-						}
-						// If there was a routing error
-						Err(e) => new_boilerplate(def_headers, req_headers, 404, if is_head { Body::empty() } else { e.into() }).boxed(),
-					}
-				}))
-			}
-		});
-
+	pub fn listen(self, addr: &str) -> Boxed<Result<(), std::io::Error>> {
 		// Build SocketAddr from provided address
-		let address = &addr.parse().unwrap_or_else(|_| panic!("Cannot parse {addr} as address (example format: 0.0.0.0:8080)"));
+		let address: std::net::SocketAddr = addr.parse().unwrap_or_else(|_| panic!("Cannot parse {addr} as address (example format: 0.0.0.0:8080)"));
 
-		// Bind server to address specified above. Gracefully shut down if CTRL+C is pressed
-		let server = HyperServer::bind(address).serve(make_svc).with_graceful_shutdown(async {
-			#[cfg(windows)]
-			// Wait for the CTRL+C signal
-			tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
+		let router = std::sync::Arc::new(self.router);
+		let default_headers = self.default_headers;
 
-			#[cfg(unix)]
-			{
-				// Wait for CTRL+C or SIGTERM signals
-				let mut signal_terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("Failed to install SIGTERM signal handler");
-				tokio::select! {
-					_ = tokio::signal::ctrl_c() => (),
-					_ = signal_terminate.recv() => ()
+		let service = service_fn(move |req: Request<Incoming>| {
+			let req = req.map(Body::new);
+			let req_headers = req.headers().clone();
+			let def_headers = default_headers.clone();
+
+			// Catch robots.txt-disrespecful bots who still identify themselves
+			// Typically justified as "human triggered" actions.
+			if match config::get_setting("REDLIB_ROBOTS_DISABLE_INDEXING") {
+				Some(val) => val == "on",
+				None => false,
+			} {
+				if let Some(user_agent) = req_headers.get("user-agent") {
+					if let Ok(user_agent_str) = user_agent.to_str() {
+						for banned in BANNED_USER_AGENTS {
+							if user_agent_str.contains(banned) {
+								return new_boilerplate(def_headers, req_headers, 403, Body::from("Forbidden")).boxed();
+							}
+						}
+					}
 				}
 			}
+
+			// Remove double slashes and decode encoded slashes
+			let mut path = req.uri().path().replace("//", "/").replace("%2F", "/");
+
+			// Remove trailing slashes
+			if path != "/" && path.ends_with('/') {
+				path.pop();
+			}
+
+			// Replace HEAD with GET for routing
+			let (method, is_head) = match req.method() {
+				&Method::HEAD => (&Method::GET, true),
+				method => (method, false),
+			};
+
+			// Match the visited path with an added route
+			match router.recognize(&format!("/{}{}", method.as_str(), path)) {
+				// If a route was configured for this path
+				Ok(found) => {
+					let mut parammed = req;
+					parammed.set_params(found.params().clone());
+
+					// Run the route's function
+					let func = (found.handler().to_owned().to_owned())(parammed);
+					async move {
+						match func.await {
+							Ok(mut res) => {
+								res.headers_mut().extend(def_headers);
+								if is_head {
+									*res.body_mut() = Body::empty();
+								} else {
+									let _ = compress_response(&req_headers, &mut res).await;
+								}
+
+								Ok(res)
+							}
+							Err(msg) => new_boilerplate(def_headers, req_headers, 500, if is_head { Body::empty() } else { Body::from(msg) }).await,
+						}
+					}
+					.boxed()
+				}
+				// If there was a routing error
+				Err(e) => new_boilerplate(def_headers, req_headers, 404, if is_head { Body::empty() } else { e.into() }).boxed(),
+			}
 		});
 
-		server.boxed()
+		async move {
+			let listener = tokio::net::TcpListener::bind(address).await?;
+			let mut builder = auto::Builder::new(TokioExecutor::new());
+			// Required by http1's default header read timeout.
+			builder.http1().timer(TokioTimer::new());
+			let graceful = GracefulShutdown::new();
+			let mut shutdown = std::pin::pin!(shutdown_signal());
+
+			loop {
+				tokio::select! {
+					conn = listener.accept() => {
+						let (stream, _) = match conn {
+							Ok(conn) => conn,
+							Err(e) => {
+								dbg_msg!(e);
+								continue;
+							}
+						};
+						let conn = builder.serve_connection_with_upgrades(TokioIo::new(stream), service.clone()).into_owned();
+						let conn = graceful.watch(conn);
+						tokio::spawn(async move {
+							if let Err(e) = conn.await {
+								dbg_msg!(e);
+							}
+						});
+					}
+					() = &mut shutdown => break,
+				}
+			}
+
+			graceful.shutdown().await;
+			Ok(())
+		}
+		.boxed()
+	}
+}
+
+async fn shutdown_signal() {
+	#[cfg(windows)]
+	// Wait for the CTRL+C signal
+	tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
+
+	#[cfg(unix)]
+	{
+		// Wait for CTRL+C or SIGTERM signals
+		let mut signal_terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("Failed to install SIGTERM signal handler");
+		tokio::select! {
+			_ = tokio::signal::ctrl_c() => (),
+			_ = signal_terminate.recv() => ()
+		}
 	}
 }
 
@@ -655,7 +677,7 @@ async fn compress_response(req_headers: &HeaderMap<header::HeaderValue>, res: &m
 	};
 
 	// Get the body from the response.
-	let body_bytes: Vec<u8> = match body::to_bytes(res.body_mut()).await {
+	let body_bytes: Vec<u8> = match std::mem::take(res.body_mut()).collect_bytes().await {
 		Ok(b) => b.to_vec(),
 		Err(e) => {
 			dbg_msg!(e);
@@ -836,7 +858,7 @@ mod tests {
 			//
 			// In the case of no compression, just make sure the "new" body in
 			// the Response is the same as what with which we start.
-			let body_vec = match block_on(body::to_bytes(res.body_mut())) {
+			let body_vec = match block_on(std::mem::take(res.body_mut()).collect_bytes()) {
 				Ok(b) => b.to_vec(),
 				Err(e) => panic!("{e}"),
 			};
