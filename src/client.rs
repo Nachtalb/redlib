@@ -15,8 +15,8 @@ use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicU16};
 use std::sync::LazyLock;
 use wreq::redirect::Policy;
-use wreq::{header as wreq_header, Client as WreqClient, EmulationFactory, Method, Response as WreqResponse};
-use wreq_util::{Emulation, EmulationOS, EmulationOption};
+use wreq::{header as wreq_header, Client as WreqClient, Method, Response as WreqResponse};
+use wreq_util::{Emulation, Platform, Profile};
 
 const REDDIT_URL_BASE: &str = "https://oauth.reddit.com";
 const REDDIT_URL_BASE_HOST: &str = "oauth.reddit.com";
@@ -48,17 +48,14 @@ pub fn build_client() -> WreqClient {
 	// Keeping this list short to aid in privacy.
 	// The more emulations, the more unique a fingerprint each instance has.
 	// But some emulations should increase evasiveness.
-	let emulation = [Emulation::Chrome145, Emulation::Firefox147];
-	let emulation_os = [EmulationOS::Android, EmulationOS::Windows];
+	let profiles = [Profile::Chrome145, Profile::Firefox147];
+	let platforms = [Platform::Android, Platform::Windows];
 
 	let rand = fastrand::usize(..);
-	let emulation = EmulationOption::builder()
-		.emulation(emulation[rand % emulation.len()])
-		.emulation_os(emulation_os[rand % emulation_os.len()])
-		.build()
-		.emulation();
+	let (profile, platform) = (profiles[rand % profiles.len()], platforms[rand % platforms.len()]);
+	let emulation = Emulation::builder().profile(profile).platform(platform).build();
 
-	info!("Building Wreq client with random emulation {:?}", emulation);
+	info!("Building Wreq client with random emulation {:?} on {:?}", profile, platform);
 	WreqClient::builder()
 		.emulation(emulation)
 		.redirect(Policy::none())
