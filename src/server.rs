@@ -693,7 +693,7 @@ async fn compress_response(req_headers: &HeaderMap<header::HeaderValue>, res: &m
 // larger than client::json's TTL, but that's okay, because if client::json
 // returns a new serde_json::Value, body_bytes changes, so this function will
 // execute again.
-#[cached(size = 100, time = 600, result = true)]
+#[cached(max_size = 100, ttl_secs = 600)]
 fn compress_body(compressor: CompressionType, body_bytes: Vec<u8>) -> Result<Vec<u8>, String> {
 	// io::Cursor implements io::Read, required for our encoders.
 	let mut reader = io::Cursor::new(body_bytes);
