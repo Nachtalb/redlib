@@ -4,6 +4,7 @@
 use crate::config::{self, get_setting};
 use crate::{client::json, server::RequestExt};
 use askama::Template;
+use clearurls::UrlCleaner;
 use cookie::Cookie;
 use hyper::{Body, Request, Response};
 use libflate::deflate::{Decoder, Encoder};
@@ -11,7 +12,7 @@ use htmlescape;
 use log::error;
 use chrono::DateTime;
 use regex::Regex;
-use revision::revisioned;
+use revision::{revisioned, Error};
 use crate::redgifs;
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -22,7 +23,7 @@ use std::env;
 use std::io::{Read, Write};
 use std::str::FromStr;
 use std::string::ToString;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use time::{macros::format_description, Duration, OffsetDateTime};
 use url::Url;
 use rss::{Enclosure, Guid, Item};
@@ -631,7 +632,7 @@ pub struct Params {
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[revisioned(revision = 1)]
+#[revisioned(revision = 2)]
 pub struct Preferences {
 	#[revision(start = 1)]
 	#[serde(skip_serializing, skip_deserializing)]
@@ -680,8 +681,14 @@ pub struct Preferences {
 	pub hide_score: String,
 	#[revision(start = 1)]
 	pub remove_default_feeds: String,
-	#[revision(start = 1)]
+	#[revision(start = 2, default_fn = "default_geo_filter")]
 	pub geo_filter: String,
+	#[revision(start = 2, default_fn = "default_clean_urls")]
+	pub clean_urls: String,
+	#[revision(start = 2, default_fn = "default_instance_setting")]
+	pub posts_per_page: String,
+	#[revision(start = 2, default_fn = "default_instance_setting")]
+	pub max_comment_thread_depth: String,
 }
 
 fn serialize_vec_with_plus<S>(vec: &[String], serializer: S) -> Result<S::Ok, S::Error>
@@ -741,6 +748,9 @@ impl Preferences {
 			hide_score: setting(req, "hide_score"),
 			remove_default_feeds: setting(req, "remove_default_feeds"),
 			geo_filter: setting_or_default(req, "geo_filter", "GLOBAL".to_string()),
+			clean_urls: setting(req, "clean_urls"),
+			posts_per_page: setting(req, "posts_per_page"),
+			max_comment_thread_depth: setting(req, "max_comment_thread_depth"),
 		}
 	}
 
@@ -756,6 +766,16 @@ impl Preferences {
 	}
 	pub fn to_bincode_str(&self) -> Result<String, String> {
 		Ok(base2048::encode(&self.to_compressed_bincode()?))
+	}
+	fn default_geo_filter(_revision: u16) -> Result<String, Error> {
+		Ok("GLOBAL".to_owned())
+	}
+	/// Empty = fall back to the instance default at read time.
+	fn default_instance_setting(_revision: u16) -> Result<String, Error> {
+		Ok(String::new())
+	}
+	fn default_clean_urls(_revision: u16) -> Result<String, Error> {
+		Ok("off".to_owned())
 	}
 }
 
@@ -1093,6 +1113,24 @@ pub fn format_url(url: &str) -> String {
 	}
 }
 
+// Remove tracking query params
+static URL_CLEANER: LazyLock<Arc<UrlCleaner>> = LazyLock::new(|| Arc::new(UrlCleaner::from_embedded_rules().expect("Failed to initialize UrlCleaner")));
+
+pub fn clean_url(url: String) -> String {
+	let is_external_url = match Url::parse(url.as_str()) {
+		Ok(parsed_url) => parsed_url.domain().is_some(),
+		_ => false,
+	};
+	let mut cleaned_url = url.clone();
+	if is_external_url {
+		cleaned_url = match URL_CLEANER.clear_single_url_str(cleaned_url.as_str()) {
+			Ok(cleaned_result) => cleaned_result.as_ref().to_owned(),
+			_ => cleaned_url,
+		}
+	}
+	cleaned_url
+}
+
 static REGEX_BULLET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^- (.*)$").unwrap());
 static REGEX_BULLET_CONSECUTIVE_LINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"</ul>\n<ul>").unwrap());
 
@@ -1289,8 +1327,12 @@ pub fn rewrite_emotes(media_metadata: &Value, comment: String) -> String {
 /// Append `m` and `k` for millions and thousands respectively, and
 /// round to the nearest tenth.
 pub fn format_num(num: i64) -> (String, String) {
-	let truncated = if num >= 1_000_000 || num <= -1_000_000 {
+	let truncated = if num >= 10_000_000 || num <= -10_000_000 {
+		format!("{}m", num / 1_000_000)
+	} else if num >= 1_000_000 || num <= -1_000_000 {
 		format!("{:.1}m", num as f64 / 1_000_000.0)
+	} else if num >= 10000 || num <= -10000 {
+		format!("{}k", num / 1_000)
 	} else if num >= 1000 || num <= -1000 {
 		format!("{:.1}k", num as f64 / 1_000.0)
 	} else {
@@ -1707,10 +1749,13 @@ mod tests {
 			hide_score: "off".to_owned(),
 			remove_default_feeds: "off".to_owned(),
 			geo_filter: "GLOBAL".to_owned(),
+			clean_urls: "off".to_owned(),
+			posts_per_page: "25".to_owned(),
+			max_comment_thread_depth: "-1".to_owned(),
 		};
 		let urlencoded = serde_urlencoded::to_string(prefs).expect("Failed to serialize Prefs");
 
-		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off&geo_filter=GLOBAL");
+		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off&geo_filter=GLOBAL&clean_urls=off&posts_per_page=25&max_comment_thread_depth=-1");
 	}
 
 	#[test]

@@ -3,7 +3,7 @@
 use crate::{config};
 use crate::{client::json, server::RequestExt, server::ResponseExt};
 use crate::utils::{
-	build_rss_item, should_be_nsfw_gated, Post, Preferences, Subreddit, catch_random, error, filter_posts, format_num, format_url, get_filters, info, nsfw_landing, param, redirect, rewrite_urls, setting, template, val
+	build_rss_item, should_be_nsfw_gated, Post, Preferences, Subreddit, catch_random, clean_url, error, filter_posts, format_num, format_url, get_filters, info, nsfw_landing, param, redirect, rewrite_urls, setting, template, val
 };
 use askama::Template;
 use cookie::Cookie;
@@ -129,7 +129,16 @@ pub async fn community(req: Request<Body>) -> Result<Response<Body>, String> {
 		params.push_str(&format!("&geo_filter={}", prefs.geo_filter));
 	}
 
-	let path = format!("/r/{}/{sort}.json?{}{params}", sub_name.replace('+', "%2B"), req.uri().query().unwrap_or_default());
+	let posts_per_page: u32 = setting(&req, "posts_per_page").parse().unwrap_or(25).clamp(1, 100);
+	if posts_per_page != 25 {
+		params.push_str(&format!("&limit={}", posts_per_page));
+	}
+
+	let path = format!(
+		"/r/{}/{sort}.json?{}{params}",
+		sub_name.replace('+', "%2B"),
+		req.uri().query().unwrap_or_default()
+	);
 	let url = String::from(req.uri().path_and_query().map_or("", |val| val.as_str()));
 	let redirect_url = url[1..].replace('?', "%3F").replace('&', "%26").replace('+', "%2B");
 	let filters = get_filters(&req);
@@ -152,6 +161,10 @@ pub async fn community(req: Request<Body>) -> Result<Response<Body>, String> {
 	} else {
 		match Post::fetch(&path, quarantined).await {
 			Ok((mut posts, after)) => {
+				let clean_urls = setting(&req, "clean_urls");
+				if clean_urls == "on".to_owned() {
+					posts.iter_mut().for_each(|post| post.media.url = clean_url(post.media.url.clone()));
+				}
 				let (_, all_posts_filtered) = filter_posts(&mut posts, &filters);
 				let no_posts = posts.is_empty();
 				let all_posts_hidden_nsfw = !no_posts && (posts.iter().all(|p| p.flags.nsfw) && setting(&req, "show_nsfw") != "on");
