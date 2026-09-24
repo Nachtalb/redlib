@@ -632,7 +632,7 @@ pub struct Params {
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[revisioned(revision = 3)]
+#[revisioned(revision = 2)]
 pub struct Preferences {
 	#[revision(start = 1)]
 	#[serde(skip_serializing, skip_deserializing)]
@@ -685,9 +685,9 @@ pub struct Preferences {
 	pub geo_filter: String,
 	#[revision(start = 2, default_fn = "default_clean_urls")]
 	pub clean_urls: String,
-	#[revision(start = 3)]
+	#[revision(start = 2, default_fn = "default_instance_setting")]
 	pub posts_per_page: String,
-	#[revision(start = 3)]
+	#[revision(start = 2, default_fn = "default_instance_setting")]
 	pub max_comment_thread_depth: String,
 }
 
@@ -769,6 +769,10 @@ impl Preferences {
 	}
 	fn default_geo_filter(_revision: u16) -> Result<String, Error> {
 		Ok("GLOBAL".to_owned())
+	}
+	/// Empty = fall back to the instance default at read time.
+	fn default_instance_setting(_revision: u16) -> Result<String, Error> {
+		Ok(String::new())
 	}
 	fn default_clean_urls(_revision: u16) -> Result<String, Error> {
 		Ok("off".to_owned())
