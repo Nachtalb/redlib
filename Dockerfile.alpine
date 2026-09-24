@@ -1,6 +1,6 @@
 # supported versions here: https://hub.docker.com/_/rust
 ARG RUST_BUILDER_VERSION=slim-bookworm
-ARG ALPINE_VERSION=3.23
+ARG ALPINE_VERSION=3.24
 
 ########################
 ## builder image
