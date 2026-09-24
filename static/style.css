@@ -664,7 +664,8 @@ select,
 #listing_options,
 #inside,
 #searchbox > *,
-#sort_submit {
+#sort_submit,
+#comment_search_submit {
     height: 38px;
 }
 
@@ -711,7 +712,8 @@ select,
 }
 
 #searchbox > *,
-#sort_submit {
+#sort_submit,
+#comment_search_submit {
     background: var(--highlighted);
 }
 
