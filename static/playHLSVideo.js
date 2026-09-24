@@ -1,7 +1,7 @@
 // @license http://www.gnu.org/licenses/agpl-3.0.html AGPL-3.0
 (function () {
-    const configElement = document.getElementById('video_quality');
-    const qualitySetting = configElement.getAttribute('data-value');
+    const configElement = document.getElementById("video_quality");
+    const qualitySetting = configElement.getAttribute("data-value");
     if (Hls.isSupported()) {
         var videoSources = document.querySelectorAll("video source[type='application/vnd.apple.mpegurl']");
         videoSources.forEach(function (source) {
@@ -32,11 +32,11 @@
 
             function getIndexOfDefault(length) {
                 switch (qualitySetting) {
-                    case 'best':
+                    case "best":
                         return length - 1;
-                    case 'medium':
+                    case "medium":
                         return Math.floor(length / 2);
-                    case 'worst':
+                    case "worst":
                         return 0;
                     default:
                         return length - 1;
@@ -44,13 +44,13 @@
             }
 
             function initializeHls() {
-                newVideo.removeEventListener('play', initializeHls);
+                newVideo.removeEventListener("play", initializeHls);
                 var hls = new Hls({ autoStartLoad: false });
                 hls.loadSource(playlist);
                 hls.attachMedia(newVideo);
                 hls.on(Hls.Events.MANIFEST_PARSED, function () {
                     hls.loadLevel = getIndexOfDefault(hls.levels.length);
-                    var availableLevels = hls.levels.map(function(level) {
+                    var availableLevels = hls.levels.map(function (level) {
                         return {
                             height: level.height,
                             width: level.width,
@@ -86,21 +86,21 @@
             }
 
             function addQualitySelector(videoElement, hlsInstance, availableLevels) {
-                var qualitySelector = document.createElement('select');
-                qualitySelector.classList.add('quality-selector');
+                var qualitySelector = document.createElement("select");
+                qualitySelector.classList.add("quality-selector");
                 var defaultIndex = getIndexOfDefault(availableLevels.length);
                 availableLevels.forEach(function (level, index) {
-                    var option = document.createElement('option');
+                    var option = document.createElement("option");
                     option.value = index.toString();
                     var bitrate = (level.bitrate / 1_000).toFixed(0);
-                    option.text = level.height + 'p (' + bitrate + ' kbps)';
+                    option.text = level.height + "p (" + bitrate + " kbps)";
                     if (index === defaultIndex) {
                         option.selected = "selected";
                     }
                     qualitySelector.appendChild(option);
                 });
                 qualitySelector.selectedIndex = defaultIndex;
-                qualitySelector.addEventListener('change', function () {
+                qualitySelector.addEventListener("change", function () {
                     var selectedIndex = qualitySelector.selectedIndex;
                     hlsInstance.nextLevel = selectedIndex;
                     hlsInstance.startLoad();
@@ -109,7 +109,7 @@
                 videoElement.parentNode.appendChild(qualitySelector);
             }
 
-            newVideo.addEventListener('play', initializeHls);
+            newVideo.addEventListener("play", initializeHls);
 
             if (autoplay) {
                 newVideo.play();

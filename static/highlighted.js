@@ -1,1 +1,1 @@
-document.querySelector('#commentQueryForms').scrollIntoView();
+document.querySelector("#commentQueryForms").scrollIntoView();
