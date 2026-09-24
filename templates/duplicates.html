@@ -4,21 +4,21 @@
 {% block title %}{{ post.title }} - r/{{ post.community }}{% endblock %}
 
 {% block search %}
-    {% call utils::search(["/r/", post.community.as_str()].concat(), "") %}
+    {{ utils::search(["/r/", post.community.as_str()].concat(), "") }}
 {% endblock %}
 
 {% block root %}/r/{{ post.community }}{% endblock %}{% block location %}r/{{ post.community }}{% endblock %}
 {% block head %}
-    {% call super() %}
+    {{ super() }}
 {% endblock %}
 
 {% block subscriptions %}
-    {% call utils::sub_list(post.community.as_str()) %}
+    {{ utils::sub_list(post.community.as_str()) }}
 {% endblock %}
 
 {% block content %}
     <div id="column_one">
-        {% call utils::post(post) %}
+        {{ utils::post(post) }}
 
         <!-- DUPLICATES -->
         {% if post.num_duplicates == 0 %}
@@ -54,7 +54,7 @@
                     {% if !(post.flags.nsfw) || prefs.show_nsfw == "on" %}
                         <div class="post {% if post.flags.stickied %}stickied{% endif %}" id="{{ post.id }}">
                             <p class="post_header">
-                                {% let community -%}
+                                {% decl community -%}
                                 {% if post.community.starts_with("u_") -%}
                                     {% let community = format!("u/{}", &post.community[2..]) -%}
                                 {% else -%}
@@ -78,7 +78,7 @@
                                     <a href="/r/{{ post.community }}/search?q=flair_name%3A%22{{ post.flair.text }}%22&restrict_sr=on"
                                        class="post_flair"
                                        style="color:{{ post.flair.foreground_color }}; background:{{ post.flair.background_color }};"
-                                       dir="ltr">{% call utils::render_flair(post.flair.flair_parts) %}</a>
+                                       dir="ltr">{{ utils::render_flair(post.flair.flair_parts) }}</a>
                                 {% endif %}
                                 <a href="{{ post.permalink }}">{{ post.title }}</a>{% if post.flags.nsfw %} <small class="nsfw">NSFW</small>{% endif %}
                             </h2>

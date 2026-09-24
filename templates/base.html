@@ -54,7 +54,7 @@
                     </svg>
                 </a>
                 {% if prefs.disable_visit_reddit_confirmation != "on" %}
-                    {% call utils::visit_reddit_confirmation(url) %}
+                    {{ utils::visit_reddit_confirmation(url) }}
                 {% endif %}
                 <a id="settings_link" href="/settings?return_to={{ self.url }}">
                     <span>settings</span>
