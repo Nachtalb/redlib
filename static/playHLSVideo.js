@@ -45,8 +45,20 @@
 
             function initializeHls() {
                 newVideo.removeEventListener("play", initializeHls);
+                var wantsPlay = !newVideo.paused;
+                function onPause() {
+                    wantsPlay = false;
+                }
+                newVideo.addEventListener("pause", onPause);
                 var hls = new Hls({ autoStartLoad: false });
                 hls.loadSource(playlist);
+                // Attaching resets the element to paused, so resume here unless the user paused meanwhile.
+                hls.once(Hls.Events.MEDIA_ATTACHED, function () {
+                    newVideo.removeEventListener("pause", onPause);
+                    if (wantsPlay) {
+                        newVideo.play();
+                    }
+                });
                 hls.attachMedia(newVideo);
                 hls.on(Hls.Events.MANIFEST_PARSED, function () {
                     hls.loadLevel = getIndexOfDefault(hls.levels.length);
@@ -61,7 +73,6 @@
                     addQualitySelector(newVideo, hls, availableLevels);
 
                     hls.startLoad();
-                    newVideo.play();
                 });
 
                 hls.on(Hls.Events.ERROR, function (event, data) {
