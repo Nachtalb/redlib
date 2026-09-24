@@ -631,7 +631,82 @@ pub struct Params {
 	pub before: Option<String>,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
+/// First byte of a revisioned settings code. Plain-bincode codes start with the
+/// little-endian length of the theme name, which is never 255.
+const REVISIONED_PREFS_MARKER: u8 = 0xFF;
+
+/// Settings code layout before the revisioned format: plain bincode of the
+/// original upstream fields. Frozen; never add fields here.
+#[derive(Deserialize)]
+struct LegacyPreferences {
+	theme: String,
+	front_page: String,
+	layout: String,
+	wide: String,
+	blur_spoiler: String,
+	show_nsfw: String,
+	blur_nsfw: String,
+	hide_hls_notification: String,
+	video_quality: String,
+	hide_sidebar_and_summary: String,
+	use_hls: String,
+	autoplay_videos: String,
+	fixed_navbar: String,
+	disable_visit_reddit_confirmation: String,
+	comment_sort: String,
+	post_sort: String,
+	#[serde(deserialize_with = "deserialize_vec_with_plus")]
+	subscriptions: Vec<String>,
+	#[serde(deserialize_with = "deserialize_vec_with_plus")]
+	filters: Vec<String>,
+	hide_awards: String,
+	hide_score: String,
+	remove_default_feeds: String,
+}
+
+impl LegacyPreferences {
+	fn decode(bytes: &[u8]) -> Result<Preferences, String> {
+		let mut rest = bytes;
+		let old: Self = bincode::deserialize_from(&mut rest).map_err(|e| e.to_string())?;
+		// Codes exported by this fork before the revisioned format carry geo_filter next.
+		let geo_filter = if rest.is_empty() {
+			None
+		} else {
+			bincode::deserialize_from::<_, String>(&mut rest).ok()
+		};
+		let defaults = |f: fn(u16) -> Result<String, Error>| f(1).unwrap_or_default();
+		Ok(Preferences {
+			available_themes: Vec::new(),
+			theme: old.theme,
+			front_page: old.front_page,
+			layout: old.layout,
+			wide: old.wide,
+			blur_spoiler: old.blur_spoiler,
+			show_nsfw: old.show_nsfw,
+			blur_nsfw: old.blur_nsfw,
+			hide_hls_notification: old.hide_hls_notification,
+			video_quality: old.video_quality,
+			hide_sidebar_and_summary: old.hide_sidebar_and_summary,
+			use_hls: old.use_hls,
+			autoplay_videos: old.autoplay_videos,
+			fixed_navbar: old.fixed_navbar,
+			disable_visit_reddit_confirmation: old.disable_visit_reddit_confirmation,
+			comment_sort: old.comment_sort,
+			post_sort: old.post_sort,
+			subscriptions: old.subscriptions,
+			filters: old.filters,
+			hide_awards: old.hide_awards,
+			hide_score: old.hide_score,
+			remove_default_feeds: old.remove_default_feeds,
+			geo_filter: geo_filter.unwrap_or_else(|| defaults(Preferences::default_geo_filter)),
+			clean_urls: defaults(Preferences::default_clean_urls),
+			posts_per_page: defaults(Preferences::default_instance_setting),
+			max_comment_thread_depth: defaults(Preferences::default_instance_setting),
+		})
+	}
+}
+
+#[derive(Default, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[revisioned(revision = 2)]
 pub struct Preferences {
 	#[revision(start = 1)]
@@ -758,8 +833,23 @@ impl Preferences {
 		serde_urlencoded::to_string(self).map_err(|e| e.to_string())
 	}
 
+	/// Encode for a settings code: marker byte + `revision` encoding, which stores the
+	/// revision so fields added later decode to their `default_fn` in older codes.
 	pub fn to_bincode(&self) -> Result<Vec<u8>, String> {
-		bincode::serialize(self).map_err(|e| e.to_string())
+		let prefs = Self {
+			available_themes: Vec::new(),
+			..self.clone()
+		};
+		let mut out = vec![REVISIONED_PREFS_MARKER];
+		revision::to_writer(&mut out, &prefs).map_err(|e| e.to_string())?;
+		Ok(out)
+	}
+	/// Decode a settings code: the revisioned format, or the original plain-bincode one.
+	pub fn from_bincode(bytes: &[u8]) -> Result<Self, String> {
+		match bytes.split_first() {
+			Some((&REVISIONED_PREFS_MARKER, rest)) => revision::from_slice(rest).map_err(|e| e.to_string()),
+			_ => LegacyPreferences::decode(bytes),
+		}
 	}
 	pub fn to_compressed_bincode(&self) -> Result<Vec<u8>, String> {
 		deflate_compress(self.to_bincode()?)
@@ -1874,7 +1964,7 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 		for config in KNOWN_GOOD_CONFIGS {
 			let bytes = base2048::decode(config).unwrap();
 			let decompressed = deflate_decompress(bytes).unwrap();
-			assert!(bincode::deserialize::<Preferences>(&decompressed).is_ok());
+			assert!(Preferences::from_bincode(&decompressed).is_ok());
 		}
 	}
 
@@ -1883,17 +1973,79 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 		for config in KNOWN_GOOD_CONFIGS {
 			let bytes = base2048::decode(config).unwrap();
 			let decompressed = deflate_decompress(bytes).unwrap();
-			let prefs: Preferences = bincode::deserialize(&decompressed).unwrap();
+			let prefs = Preferences::from_bincode(&decompressed).unwrap();
 			test_round_trip(&prefs, false);
 			test_round_trip(&prefs, true);
 		}
 	}
 
 	fn test_round_trip(input: &Preferences, compression: bool) {
-		let serialized = bincode::serialize(input).unwrap();
+		let serialized = input.to_bincode().unwrap();
 		let compressed = if compression { deflate_compress(serialized).unwrap() } else { serialized };
 		let decompressed = if compression { deflate_decompress(compressed).unwrap() } else { compressed };
-		let deserialized: Preferences = bincode::deserialize(&decompressed).unwrap();
+		let deserialized = Preferences::from_bincode(&decompressed).unwrap();
 		assert_eq!(*input, deserialized);
+	}
+
+	/// A code as the old plain-bincode exporter wrote it: upstream fields, optionally + geo_filter.
+	fn legacy_code(prefs: &Preferences, with_geo: bool) -> Vec<u8> {
+		let mut bytes = bincode::serialize(prefs).unwrap();
+		let newer = (&prefs.clean_urls, &prefs.posts_per_page, &prefs.max_comment_thread_depth);
+		let mut cut = bincode::serialized_size(&newer).unwrap() as usize;
+		if !with_geo {
+			cut += bincode::serialized_size(&prefs.geo_filter).unwrap() as usize;
+		}
+		bytes.truncate(bytes.len() - cut);
+		bytes
+	}
+
+	fn sample_prefs() -> Preferences {
+		Preferences {
+			theme: "dracula".to_owned(),
+			layout: "card".to_owned(),
+			subscriptions: vec!["rust".to_owned(), "pics".to_owned()],
+			filters: vec!["politics".to_owned()],
+			geo_filter: "CH".to_owned(),
+			clean_urls: "on".to_owned(),
+			posts_per_page: "50".to_owned(),
+			max_comment_thread_depth: "3".to_owned(),
+			..Preferences::default()
+		}
+	}
+
+	#[test]
+	fn test_legacy_upstream_code_gets_defaults() {
+		let prefs = sample_prefs();
+		let decoded = Preferences::from_bincode(&legacy_code(&prefs, false)).unwrap();
+		assert_eq!(decoded.theme, "dracula");
+		assert_eq!(decoded.subscriptions, prefs.subscriptions);
+		assert_eq!(decoded.filters, prefs.filters);
+		assert_eq!(decoded.geo_filter, "GLOBAL");
+		assert_eq!(decoded.clean_urls, "off");
+		assert_eq!(decoded.posts_per_page, "");
+		assert_eq!(decoded.max_comment_thread_depth, "");
+	}
+
+	#[test]
+	fn test_legacy_code_with_geo_filter_keeps_it() {
+		let decoded = Preferences::from_bincode(&legacy_code(&sample_prefs(), true)).unwrap();
+		assert_eq!(decoded.geo_filter, "CH");
+		assert_eq!(decoded.clean_urls, "off");
+	}
+
+	#[test]
+	fn test_revisioned_code_round_trips_all_fields() {
+		let prefs = sample_prefs();
+		let bytes = prefs.to_bincode().unwrap();
+		assert_eq!(bytes[0], super::REVISIONED_PREFS_MARKER);
+		assert_eq!(Preferences::from_bincode(&bytes).unwrap(), prefs);
+	}
+
+	#[test]
+	fn test_code_string_round_trip() {
+		let prefs = sample_prefs();
+		let code = prefs.to_bincode_str().unwrap();
+		let bytes = deflate_decompress(base2048::decode(&code).unwrap()).unwrap();
+		assert_eq!(Preferences::from_bincode(&bytes).unwrap(), prefs);
 	}
 }
