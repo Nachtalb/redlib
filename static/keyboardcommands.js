@@ -53,4 +53,3 @@ document.querySelectorAll('.thread').forEach((thread) => {
     }
   });
 });
-

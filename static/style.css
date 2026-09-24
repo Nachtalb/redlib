@@ -707,7 +707,7 @@ select,
     margin-bottom: 0;
 }
 
-#searchbox:focus-within {   
+#searchbox:focus-within {
     outline: 2px solid var(--accent);
 }
 

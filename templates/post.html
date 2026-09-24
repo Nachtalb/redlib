@@ -55,7 +55,7 @@
        <div id="commentQueryForms">
 		<form id="sort">
 			<p id="comment_count">{{post.comments.0}} {% if post.comments.0 == "1" %}comment{% else %}comments{% endif %} <span id="sorted_by">sorted by </span></p>
-			<select name="sort" title="Sort comments by" id="commentSortSelect"> 
+			<select name="sort" title="Sort comments by" id="commentSortSelect">
 				{% call utils::options(sort, ["confidence", "top", "new", "controversial", "old"], "confidence") %}
       </select>
         <button id="sort_submit" class="submit">
@@ -79,7 +79,7 @@
       </button>
       </form>
       </div>
-  
+
       <div>
       {% if comment_query != "" %}
       Comments containing "{{ comment_query }}"&nbsp;|&nbsp;<a id="allCommentsLink" href="{{ url_without_query }}">All comments</a>
@@ -95,7 +95,7 @@
 			<p class="thread_nav"><a href="?context=9999">Show parent comments</a></p>
 			{% endif %}
 			{% endif %}
-			
+
 			{{ c.render().unwrap()|safe }}
 		</div>
 		{%- endfor %}

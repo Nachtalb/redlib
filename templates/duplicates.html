@@ -82,7 +82,7 @@
                             {% endif %}
                             <a href="{{ post.permalink }}">{{ post.title }}</a>{% if post.flags.nsfw %} <small class="nsfw">NSFW</small>{% endif %}
                         </h2>
-      
+
                         <div class="post_score" title="{{ post.score.1 }}">
                           {% if prefs.hide_score != "on" %}
                           {{ post.score.0 }}

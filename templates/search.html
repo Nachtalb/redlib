@@ -24,7 +24,7 @@
 						{% call utils::options(params.sort, ["relevance", "hot", "top", "new", "comments"], "") %}
 					</select>
 					{% if params.sort != "new" %}
-					<select id="timeframe" name="t" title="Timeframe"> 
+					<select id="timeframe" name="t" title="Timeframe">
 						{% call utils::options(params.t, ["hour", "day", "week", "month", "year", "all"], "all") %}
 					</select>
 					{% endif %}
@@ -50,7 +50,7 @@
 			<a href="{{ subreddit.url }}" class="search_subreddit">
 				<div class="search_subreddit_left">{% if subreddit.icon != "" %}<img loading="lazy" src="{{ subreddit.icon|safe }}" alt="r/{{ subreddit.name }} icon">{% endif %}</div>
 				<div class="search_subreddit_right">
-					<p class="search_subreddit_header"> 
+					<p class="search_subreddit_header">
 						<span class="search_subreddit_name">r/{{ subreddit.name }}</span>
 						<span class="dot">&bull;</span>
 						<span class="search_subreddit_members" title="{{ subreddit.subscribers.1 }} Members">{{ subreddit.subscribers.0 }} Members</span>

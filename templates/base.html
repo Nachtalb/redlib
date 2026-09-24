@@ -25,9 +25,9 @@
 		<link rel="search" type="application/opensearchdescription+xml" title="Search Redlib" href="/opensearch.xml">
 		<!-- PWA Manifest -->
 		<link rel="manifest" type="application/json" href="/manifest.json">
-		<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico"> 
+		<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
 		<link rel="stylesheet" type="text/css" href="/style.css?v={{ env!("CARGO_PKG_VERSION") }}">
-		<script src="/static/keyboardcommands.js"></script>		
+		<script src="/static/keyboardcommands.js"></script>
 		<!-- Video quality -->
 		<div id="video_quality" data-value="{{ prefs.video_quality }}"></div>
 		{% endblock %}
@@ -65,7 +65,7 @@
 				</a>
 			</div>
 		</nav>
-		
+
 		<!-- MAIN CONTENT -->
 		{% block body %}
 		<main>
