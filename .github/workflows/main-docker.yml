@@ -41,7 +41,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.alpine
+          file: Dockerfile.distroless
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
