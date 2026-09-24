@@ -2,18 +2,19 @@
 #![allow(clippy::cmp_owned)]
 
 use crate::config::{self, get_setting};
+use crate::redgifs;
 use crate::{client::json, server::RequestExt};
 use askama::Template;
+use chrono::DateTime;
 use clearurls::UrlCleaner;
 use cookie::Cookie;
+use htmlescape;
 use hyper::{Body, Request, Response};
 use libflate::deflate::{Decoder, Encoder};
-use htmlescape;
 use log::error;
-use chrono::DateTime;
 use regex::Regex;
 use revision::{revisioned, Error};
-use crate::redgifs;
+use rss::{Enclosure, Guid, Item};
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
@@ -26,7 +27,6 @@ use std::string::ToString;
 use std::sync::{Arc, LazyLock};
 use time::{macros::format_description, Duration, OffsetDateTime};
 use url::Url;
-use rss::{Enclosure, Guid, Item};
 
 /// Write a message to stderr on debug mode. This function is a no-op on
 /// release code.
@@ -1653,11 +1653,7 @@ pub fn build_rss_item(post: &Post) -> Item {
 
 	// Build description
 	let description_str = match post.post_type.as_str() {
-		"gallery" => format!(
-			"<a href='{}'>Gallery with {} images</a>",
-			to_absolute_url(&post.permalink),
-			post.gallery.len()
-		),
+		"gallery" => format!("<a href='{}'>Gallery with {} images</a>", to_absolute_url(&post.permalink), post.gallery.len()),
 		_ => format!("<a href='{}'>Comments</a>", to_absolute_url(&post.permalink)),
 	};
 	item.set_description(description_str.clone());
@@ -1688,12 +1684,15 @@ fn build_media_html(post: &Post) -> String {
 			let url = to_absolute_url(&post.media.url);
 			format!("<a href=\"{}\"><img src=\"{}\" width=\"100%\" /></a><br/>", url, url)
 		}
-		"gallery" => {
-			post.gallery.iter().map(|media| {
+		"gallery" => post
+			.gallery
+			.iter()
+			.map(|media| {
 				let url = to_absolute_url(&media.url);
 				format!("<a href=\"{}\"><img src=\"{}\" width=\"100%\" /></a><br/>", url, url)
-			}).collect::<Vec<_>>().join("\n")
-		}
+			})
+			.collect::<Vec<_>>()
+			.join("\n"),
 		"video" | "gif" => {
 			let poster = to_absolute_url(&post.media.poster);
 			let video_url = to_absolute_url(&post.media.url);

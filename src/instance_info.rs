@@ -162,73 +162,73 @@ impl InstanceInfo {
 	}
 	fn to_string(&self, string_type: &StringType) -> String {
 		match string_type {
-			StringType::Raw => {
-				format!(
-					"Package name: {}\n
-				Crate version: {}\n
-                Git commit: {}\n
-                Deploy date: {}\n
-                Deploy timestamp: {}\n
-                Compile mode: {}\n
-				SFW only: {:?}\n
-				Pushshift frontend: {:?}\n
-				RSS enabled: {:?}\n
-				Full URL: {:?}\n
-				Remove default feeds: {:?}\n
-                Config:\n
-                    Banner: {:?}\n
-                    Hide awards: {:?}\n
-                    Hide score: {:?}\n
-                    Default theme: {:?}\n
-                    Default front page: {:?}\n
-                    Default layout: {:?}\n
-                    Default wide: {:?}\n
-                    Default comment sort: {:?}\n
-                    Default post sort: {:?}\n
-					Default blur Spoiler: {:?}\n
-                    Default show NSFW: {:?}\n
-                    Default blur NSFW: {:?}\n
-                    Default use HLS: {:?}\n
-                    Default hide HLS notification: {:?}\n
-					Default clean urls: {:?}\n
-					Default subscriptions: {:?}\n
-					Default filters: {:?}\n
-					Default geo filter: {:?}\n
-					Default posts per page: {:?}\n
-					Default max comment thread depth: {:?}\n",
-					self.package_name,
-					self.crate_version,
-					self.git_commit,
-					self.deploy_date,
-					self.deploy_unix_ts,
-					self.compile_mode,
-					self.config.sfw_only,
-					self.config.enable_rss,
-					self.config.full_url,
-					self.config.default_remove_default_feeds,
-					self.config.pushshift,
-					self.config.banner,
-					self.config.default_hide_awards,
-					self.config.default_hide_score,
-					self.config.default_theme,
-					self.config.default_front_page,
-					self.config.default_layout,
-					self.config.default_wide,
-					self.config.default_comment_sort,
-					self.config.default_post_sort,
-					self.config.default_blur_spoiler,
-					self.config.default_show_nsfw,
-					self.config.default_blur_nsfw,
-					self.config.default_use_hls,
-					self.config.default_hide_hls_notification,
-					self.config.default_clean_urls,
-					self.config.default_subscriptions,
-					self.config.default_filters,
-					self.config.default_geo_filter,
-					self.config.default_posts_per_page,
-					self.config.default_max_comment_thread_depth,
-				)
-			}
+			StringType::Raw => format!(
+				concat!(
+					"Package name: {}\n",
+					"Crate version: {}\n",
+					"Git commit: {}\n",
+					"Deploy date: {}\n",
+					"Deploy timestamp: {}\n",
+					"Compile mode: {}\n",
+					"SFW only: {:?}\n",
+					"RSS enabled: {:?}\n",
+					"Full URL: {:?}\n",
+					"Remove default feeds: {:?}\n",
+					"Pushshift frontend: {:?}\n",
+					"Config:\n",
+					"    Banner: {:?}\n",
+					"    Hide awards: {:?}\n",
+					"    Hide score: {:?}\n",
+					"    Default theme: {:?}\n",
+					"    Default front page: {:?}\n",
+					"    Default layout: {:?}\n",
+					"    Default wide: {:?}\n",
+					"    Default comment sort: {:?}\n",
+					"    Default post sort: {:?}\n",
+					"    Default blur Spoiler: {:?}\n",
+					"    Default show NSFW: {:?}\n",
+					"    Default blur NSFW: {:?}\n",
+					"    Default use HLS: {:?}\n",
+					"    Default hide HLS notification: {:?}\n",
+					"    Default clean urls: {:?}\n",
+					"    Default subscriptions: {:?}\n",
+					"    Default filters: {:?}\n",
+					"    Default geo filter: {:?}\n",
+					"    Default posts per page: {:?}\n",
+					"    Default max comment thread depth: {:?}\n",
+				),
+				self.package_name,
+				self.crate_version,
+				self.git_commit,
+				self.deploy_date,
+				self.deploy_unix_ts,
+				self.compile_mode,
+				self.config.sfw_only,
+				self.config.enable_rss,
+				self.config.full_url,
+				self.config.default_remove_default_feeds,
+				self.config.pushshift,
+				self.config.banner,
+				self.config.default_hide_awards,
+				self.config.default_hide_score,
+				self.config.default_theme,
+				self.config.default_front_page,
+				self.config.default_layout,
+				self.config.default_wide,
+				self.config.default_comment_sort,
+				self.config.default_post_sort,
+				self.config.default_blur_spoiler,
+				self.config.default_show_nsfw,
+				self.config.default_blur_nsfw,
+				self.config.default_use_hls,
+				self.config.default_hide_hls_notification,
+				self.config.default_clean_urls,
+				self.config.default_subscriptions,
+				self.config.default_filters,
+				self.config.default_geo_filter,
+				self.config.default_posts_per_page,
+				self.config.default_max_comment_thread_depth,
+			),
 			StringType::Html => self.to_table(),
 		}
 	}

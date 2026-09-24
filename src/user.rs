@@ -1,7 +1,7 @@
 #![allow(clippy::cmp_owned)]
-use crate::{config};
+use crate::config;
+use crate::utils::{build_rss_item, error, filter_posts, format_url, get_filters, nsfw_landing, param, setting, should_be_nsfw_gated, template, Post, Preferences, User};
 use crate::{client::json, server::RequestExt};
-use crate::utils::{build_rss_item, error, filter_posts, format_url, get_filters, nsfw_landing, param, setting, template, Post, Preferences, User, should_be_nsfw_gated};
 use askama::Template;
 use hyper::{Body, Request, Response};
 use rss::ChannelBuilder;
@@ -154,12 +154,7 @@ pub async fn rss(req: Request<Body>) -> Result<Response<Body>, String> {
 	let channel = ChannelBuilder::default()
 		.title(user_str)
 		.description(user_obj.description)
-		.items(
-			posts
-				.into_iter()
-				.map(|post| build_rss_item(&post))
-				.collect::<Vec<_>>(),
-		)
+		.items(posts.into_iter().map(|post| build_rss_item(&post)).collect::<Vec<_>>())
 		.build();
 
 	// Serialize the feed to RSS
