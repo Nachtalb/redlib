@@ -1,5 +1,6 @@
 #![allow(clippy::cmp_owned)]
 
+use crate::body::Body;
 use crate::config;
 use crate::utils::{
 	build_rss_item, catch_random, clean_url, error, filter_posts, format_num, format_url, get_filters, info, nsfw_landing, param, redirect, rewrite_urls, setting,
@@ -8,7 +9,7 @@ use crate::utils::{
 use crate::{client::json, server::RequestExt, server::ResponseExt};
 use askama::Template;
 use cookie::Cookie;
-use hyper::{Body, Request, Response};
+use hyper::{Request, Response};
 use rss::ChannelBuilder;
 use time::{Duration, OffsetDateTime};
 

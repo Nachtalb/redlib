@@ -1,12 +1,14 @@
+use crate::body::Body;
 use crate::dbg_msg;
 use crate::oauth::{force_refresh_token, token_daemon, Oauth, OauthBackendImpl};
 use crate::server::RequestExt;
 use crate::utils::{format_url, Post};
 use arc_swap::ArcSwap;
+use bytes::Buf;
 use cached::proc_macro::cached;
 use futures_lite::future::block_on;
 use futures_lite::{future::Boxed, FutureExt};
-use hyper::{body::Buf, header, Body, Request as HyperRequest, Response as HyperResponse};
+use hyper::{header, Request as HyperRequest, Response as HyperResponse};
 use log::{error, info, trace, warn};
 use percent_encoding::{percent_encode, CONTROLS};
 use serde_json::Value;
@@ -359,7 +361,7 @@ pub async fn json(path: String, quarantine: bool) -> Result<Value, String> {
 			};
 
 			// asynchronously aggregate the chunks of the body
-			match hyper::body::aggregate(response.into_hyper_response()).await {
+			match response.into_hyper_response().into_body().collect_bytes().await {
 				Ok(body) => {
 					let has_remaining = body.has_remaining();
 
@@ -497,7 +499,7 @@ impl IntoHyperResponse for WreqResponse {
 			);
 		}
 
-		builder.body(Body::wrap_stream(self.bytes_stream())).unwrap()
+		builder.body(Body::from_stream(self.bytes_stream())).unwrap()
 	}
 }
 

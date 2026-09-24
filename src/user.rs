@@ -1,9 +1,10 @@
 #![allow(clippy::cmp_owned)]
+use crate::body::Body;
 use crate::config;
 use crate::utils::{build_rss_item, error, filter_posts, format_url, get_filters, nsfw_landing, param, setting, should_be_nsfw_gated, template, Post, Preferences, User};
 use crate::{client::json, server::RequestExt};
 use askama::Template;
-use hyper::{Body, Request, Response};
+use hyper::{Request, Response};
 use rss::ChannelBuilder;
 use time::{macros::format_description, OffsetDateTime};
 

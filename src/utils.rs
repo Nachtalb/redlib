@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(clippy::cmp_owned)]
 
+use crate::body::Body;
 use crate::config::{self, get_setting};
 use crate::redgifs;
 use crate::{client::json, server::RequestExt};
@@ -9,7 +10,7 @@ use chrono::DateTime;
 use clearurls::UrlCleaner;
 use cookie::Cookie;
 use htmlescape;
-use hyper::{Body, Request, Response};
+use hyper::{Request, Response};
 use libflate::deflate::{Decoder, Encoder};
 use log::error;
 use regex::Regex;
