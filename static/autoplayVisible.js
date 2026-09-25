@@ -1,6 +1,6 @@
 // @license http://www.gnu.org/licenses/agpl-3.0.html AGPL-3.0
 (function () {
-    var videos = Array.prototype.slice.call(document.querySelectorAll("video[autoplay], video.hls_autoplay"));
+    var videos = Array.prototype.slice.call(document.querySelectorAll("video[autoplay]:not(.giphy-embed):not(.post_media_gif), video.hls_autoplay"));
     if (!videos.length || !("IntersectionObserver" in window)) {
         return;
     }
