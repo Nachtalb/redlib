@@ -251,6 +251,9 @@ async fn main() {
 		.at("/playHLSVideo.js")
 		.get(|_| resource(include_str!("../static/playHLSVideo.js"), "text/javascript", false).boxed());
 	app
+		.at("/autoplayVisible.js")
+		.get(|_| resource(include_str!("../static/autoplayVisible.js"), "text/javascript", false).boxed());
+	app
 		.at("/hls.min.js")
 		.get(|_| resource(include_str!("../static/hls.min.js"), "text/javascript", false).boxed());
 	app

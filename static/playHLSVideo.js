@@ -8,13 +8,9 @@
             var playlist = source.src;
 
             var oldVideo = source.parentNode;
-            var autoplay = oldVideo.classList.contains("hls_autoplay");
 
             // If HLS is supported natively then don't use hls.js
             if (oldVideo.canPlayType(source.type) === "probably") {
-                if (autoplay) {
-                    oldVideo.play();
-                }
                 return;
             }
 
@@ -110,15 +106,6 @@
             }
 
             newVideo.addEventListener("play", initializeHls);
-
-            if (autoplay) {
-                newVideo.play();
-            }
-        });
-    } else {
-        var videos = document.querySelectorAll("video.hls_autoplay");
-        videos.forEach(function (video) {
-            video.setAttribute("autoplay", "");
         });
     }
 })();
