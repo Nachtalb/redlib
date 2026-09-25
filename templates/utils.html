@@ -107,7 +107,11 @@
                     <img width="100%" height="100%" loading="lazy" alt="Post image" src="{{ post.media.url }}"/>
                 </a>
             </div>
-        {% else if post.post_type == "video" || post.post_type == "gif" %}
+        {% else if post.post_type == "gif" %}
+            <div class="post_media_content">
+                <video class="post_media_video post_media_gif" src="{{ post.media.url }}" poster="{{ post.media.poster }}" autoplay muted loop playsinline><a href={{ post.media.url }}>GIF</a></video>
+            </div>
+        {% else if post.post_type == "video" %}
             {% if prefs.use_hls == "on" && !post.media.alt_url.is_empty() %}
                 <script src="/hls.min.js"></script>
                 <div class="post_media_content">
@@ -243,7 +247,11 @@
                     <img width="100%" height="100%" loading="lazy" alt="Post image" src="{{ post.media.url }}"/>
                 </a>
             </div>
-        {% else if (prefs.layout.is_empty() || prefs.layout == "card") && (post.post_type == "gif" || post.post_type == "video") %}
+        {% else if (prefs.layout.is_empty() || prefs.layout == "card") && post.post_type == "gif" %}
+            <div class="post_media_content">
+                <video class="post_media_video short post_media_gif" src="{{ post.media.url }}" {% if post.media.width > 0 && post.media.height > 0 %}width="{{ post.media.width }}" height="{{ post.media.height }}"{% endif %} poster="{{ post.media.poster }}" autoplay muted loop playsinline><a href={{ post.media.url }}>GIF</a></video>
+            </div>
+        {% else if (prefs.layout.is_empty() || prefs.layout == "card") && post.post_type == "video" %}
             {% if prefs.use_hls == "on" && !post.media.alt_url.is_empty() %}
                 <div class="post_media_content">
                     <video class="post_media_video short{% if prefs.autoplay_videos == "on" %} hls_autoplay{% endif %}" {% if post.media.width > 0 && post.media.height > 0 %}width="{{ post.media.width }}" height="{{ post.media.height }}"{% endif %} poster="{{ post.media.poster }}" controls preload="none"{% if prefs.autoplay_videos == "on" %} muted{% endif %}>
