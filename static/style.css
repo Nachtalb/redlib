@@ -1734,6 +1734,7 @@ summary.comment_data {
     box-shadow: var(--shadow);
     margin-left: 20px;
     background: var(--foreground);
+    max-width: 50%;
 }
 
 aside.prefs {
