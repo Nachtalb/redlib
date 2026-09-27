@@ -34,6 +34,7 @@ COPY . ./
 
 ARG TARGETARCH
 ARG TARGETVARIANT
+ARG GIT_HASH=dev
 RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
     --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
     --mount=type=cache,id=redlib-target-${TARGETARCH}${TARGETVARIANT},target=/redlib/target \
