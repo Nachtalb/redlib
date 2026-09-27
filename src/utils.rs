@@ -199,7 +199,7 @@ impl Media {
 
 		// Check RedGifs FIRST before Reddit's cached fallback videos, then other video sources
 		let domain = data["domain"].as_str().unwrap_or_default();
-		let (post_type, url_val, alt_url_val) = if redgifs::is_redgifs_domain(domain) {
+		let (post_type, url_val, alt_url_val) = if enable_redgifs() && redgifs::is_redgifs_domain(domain) {
 			("video", &data["url"], None)
 		} else if data_preview["fallback_url"].is_string() {
 			(
@@ -1195,9 +1195,9 @@ pub fn format_url(url: &str) -> String {
 				"external-preview.redd.it" => capture(&REGEX_URL_EXTERNAL_PREVIEW, "/preview/external-pre/", 1),
 				"styles.redditmedia.com" => capture(&REGEX_URL_STYLES, "/style/", 1),
 				"www.redditstatic.com" => capture(&REGEX_URL_STATIC_MEDIA, "/static/", 1),
-				"www.redgifs.com" => capture(&REGEX_URL_REDGIFS, "/redgifs/", 1),
-				"redgifs.com" => capture(&REGEX_URL_REDGIFS, "/redgifs/", 1),
-				d if d.starts_with("v") && d.ends_with(".redgifs.com") => capture(&REGEX_URL_REDGIFS, "/redgifs/", 1),
+				"www.redgifs.com" if enable_redgifs() => capture(&REGEX_URL_REDGIFS, "/redgifs/", 1),
+				"redgifs.com" if enable_redgifs() => capture(&REGEX_URL_REDGIFS, "/redgifs/", 1),
+				d if enable_redgifs() && d.starts_with("v") && d.ends_with(".redgifs.com") => capture(&REGEX_URL_REDGIFS, "/redgifs/", 1),
 				_ => url.to_string(),
 			}
 		})
@@ -1546,6 +1546,10 @@ pub fn enable_rss() -> bool {
 		Some(val) => val == "on",
 		None => false,
 	}
+}
+
+pub fn enable_redgifs() -> bool {
+	get_setting("REDLIB_ENABLE_REDGIFS").is_none_or(|val| val != "off")
 }
 
 /// Returns true if the config/env variable `REDLIB_ROBOTS_DISABLE_INDEXING` carries the

@@ -287,8 +287,9 @@ async fn main() {
 	app.at("/static/*path").get(|r| proxy(r, "https://www.redditstatic.com/{path}").boxed());
 	app.at("/giphy/:id/:ext").get(|r| proxy(r, "https://media.giphy.com/media/{id}/giphy.{ext}").boxed());
 
-	// RedGifs proxy with lazy loading
-	app.at("/redgifs/*path").get(|req| redlib::redgifs::handler(req).boxed());
+	if redlib::utils::enable_redgifs() {
+		app.at("/redgifs/*path").get(|req| redlib::redgifs::handler(req).boxed());
+	}
 
 	// Browse user profile
 	app
