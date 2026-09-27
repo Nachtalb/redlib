@@ -1,5 +1,9 @@
 # Redlib
 
+> [!IMPORTANT]
+> **This is a fork of [redlib-org/redlib](https://github.com/redlib-org/redlib).**
+> It ships multi-arch images for amd64, 386, arm64, arm/v7 and arm/v6, and includes many features and fixes from unmerged upstream pull requests plus its own. See [FORK.md](FORK.md) for the full list of changes.
+
 > An alternative private front-end to Reddit, with its origins in [Libreddit](https://github.com/libreddit/libreddit).
 
 ![screenshot](https://i.ibb.co/18vrdxk/redlib-rust.png)
