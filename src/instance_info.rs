@@ -128,6 +128,7 @@ impl InstanceInfo {
 				["SFW only", &convert(&self.config.sfw_only)],
 				["Pushshift frontend", &convert(&self.config.pushshift)],
 				["RSS enabled", &convert(&self.config.enable_rss)],
+				["RedGifs enabled", &convert(&self.config.enable_redgifs)],
 				["Full URL", &convert(&self.config.full_url)],
 				["Remove default feeds", &convert(&self.config.default_remove_default_feeds)],
 				//TODO: fallback to crate::config::DEFAULT_PUSHSHIFT_FRONTEND
@@ -173,6 +174,7 @@ impl InstanceInfo {
 					"Compile mode: {}\n",
 					"SFW only: {:?}\n",
 					"RSS enabled: {:?}\n",
+					"RedGifs enabled: {:?}\n",
 					"Full URL: {:?}\n",
 					"Remove default feeds: {:?}\n",
 					"Pushshift frontend: {:?}\n",
@@ -206,6 +208,7 @@ impl InstanceInfo {
 				self.compile_mode,
 				self.config.sfw_only,
 				self.config.enable_rss,
+				self.config.enable_redgifs,
 				self.config.full_url,
 				self.config.default_remove_default_feeds,
 				self.config.pushshift,

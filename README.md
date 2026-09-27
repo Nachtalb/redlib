@@ -416,6 +416,7 @@ Assign a default value for each instance-specific setting by passing environment
 | `PUSHSHIFT_FRONTEND`      | String          | `undelete.pullpush.io`                 | Allows the server to set the Pushshift frontend to be used with "removed" links.                          |
 | `PORT`                    | Integer 0-65535 | `8080`                                 | The **internal** port Redlib listens on.                                                                  |
 | `ENABLE_RSS`              | `["on", "off"]` | `off`                                  | Enables RSS feed generation.                                                                              |
+| `ENABLE_REDGIFS`          | `["on", "off"]` | `on`                                   | Proxies RedGifs videos and plays them inline. Set to `off` to leave RedGifs as plain links.               |
 | `FULL_URL`                | String          | (empty)                                | Allows for proper URLs (for now, only needed by RSS)                                                      |
 | `SOURCE_URL`              | String          | `https://github.com/redlib-org/redlib` | Link to the source code for this instance.
 
