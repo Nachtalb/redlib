@@ -105,6 +105,7 @@ Own features:
 - **`/healthz` endpoint**: returns `200 ok` without contacting Reddit.
 - **`/healthz/reddit` endpoint**: for status pages. Reports how the last 20 post pages visitors opened went (`ok`, `scraped`, `blocked`) and returns `503` when fewer than half got Reddit's JSON. It never contacts Reddit itself. `/healthz/reddit.json` serves the same status as a [shields.io endpoint badge](https://shields.io/badges/endpoint-badge).
 - **The footer shows the running commit**: a GitHub icon and the short commit hash link to the source repository, in place of the version number and the separate "Code" link. `/info` shows the same: a Source row and the short commit linked to the commit itself (full hash on hover), with no crate version, and the deploy date to the second.
+- **Flavour in `/info.json`**: a hardcoded `"flavour": "nachtalb"` identifies builds of this fork, also on other people's installations. `REDLIB_FLAVOUR_SUFFIX` turns it into `nachtalb-<suffix>`. `/info` shows it in a Flavour row.
 
 ## Configuration
 
@@ -120,6 +121,7 @@ Own features:
 | `REDLIB_SCRAPE_COMMENT_PREFETCH` | `0` | Extra requests a scraped post page makes to load more comments up front. `0` loads them only when asked. |
 | `REDLIB_REDDIT_COOKIE` | (empty) | `Cookie` header of a logged-in reddit.com session, several separated by `\|`, for the `cookied-json` and `obscura-cookied-json` backends. **Secret.** |
 | `REDLIB_SOURCE_URL` | `https://github.com/Nachtalb/redlib` | Source code link in the footer, and the GitHub repository whose `main` branch the update check on error pages compares against. |
+| `REDLIB_FLAVOUR_SUFFIX` | (empty) | Appended to the `nachtalb` flavour in `/info.json` as `nachtalb-<suffix>`, to mark your own builds of this fork. |
 | `REDLIB_LISTEN_PORT`, `REDLIB_LISTEN_ADDRESS`, `REDLIB_HSTS`, `REDLIB_IPV4_ONLY`, `REDLIB_IPV6_ONLY` | `8080`, `[::]`, `604800`, `off`, `off` | The listener options, so they also work in `redlib.toml`. The flags and `PORT`/`IPV4_ONLY`/`IPV6_ONLY` take precedence. Not `REDLIB_PORT`: Kubernetes sets that to `tcp://…` for a Service named `redlib`. |
 
 ### New user settings

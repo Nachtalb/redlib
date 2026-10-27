@@ -25,6 +25,16 @@ const SCORE_EXPLANATION: &str = "<details><summary>How the score is calculated</
 /// This is the local static that is initialized at runtime (technically at
 /// the first request to the info endpoint) and contains the data
 /// retrieved from the info endpoint.
+/// Hardcoded so every installation of this fork reports it in `/info.json`.
+const FLAVOUR: &str = "nachtalb";
+
+fn flavour(suffix: Option<&str>) -> String {
+	match suffix {
+		Some(suffix) if !suffix.is_empty() => format!("{FLAVOUR}-{suffix}"),
+		_ => FLAVOUR.to_string(),
+	}
+}
+
 pub static INSTANCE_INFO: LazyLock<InstanceInfo> = LazyLock::new(InstanceInfo::new);
 
 /// Handles instance info endpoint
@@ -93,6 +103,7 @@ fn info_html(req: &Request<Body>) -> Result<Response<Body>, Error> {
 pub struct InstanceInfo {
 	package_name: String,
 	crate_version: String,
+	flavour: String,
 	pub git_commit: String,
 	deploy_date: String,
 	compile_mode: String,
@@ -105,6 +116,7 @@ impl InstanceInfo {
 		Self {
 			package_name: env!("CARGO_PKG_NAME").to_string(),
 			crate_version: env!("CARGO_PKG_VERSION").to_string(),
+			flavour: flavour(CONFIG.flavour_suffix.as_deref()),
 			git_commit: env!("GIT_HASH").to_string(),
 			deploy_date: OffsetDateTime::now_local()
 				.unwrap_or_else(|_| OffsetDateTime::now_utc())
@@ -138,6 +150,7 @@ impl InstanceInfo {
 		container.add_table(
 			Table::from([
 				["Package name", &self.package_name],
+				["Flavour", &self.flavour],
 				["Source", &source_link],
 				["Git commit", &commit],
 				["Deploy date", &self.deploy_date],
@@ -207,12 +220,19 @@ struct MessageTemplate {
 
 #[cfg(test)]
 mod tests {
-	use super::effective;
+	use super::{effective, flavour};
 
 	#[test]
 	fn effective_shows_the_default_when_unset() {
 		assert_eq!(effective(&Some("on".into()), "off"), "on");
 		assert_eq!(effective(&None, "on"), "on (default)");
 		assert_eq!(effective(&Some(String::new()), "none"), "none (default)");
+	}
+
+	#[test]
+	fn flavour_adds_the_suffix_with_a_dash() {
+		assert_eq!(flavour(None), "nachtalb");
+		assert_eq!(flavour(Some("")), "nachtalb");
+		assert_eq!(flavour(Some("foo")), "nachtalb-foo");
 	}
 }
