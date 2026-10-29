@@ -126,6 +126,8 @@ pub struct Config {
 
 	#[serde(rename = "REDLIB_SOURCE_URL")]
 	pub(crate) source_url: Option<String>,
+	#[serde(rename = "REDLIB_FLAVOUR_SUFFIX")]
+	pub(crate) flavour_suffix: Option<String>,
 	#[serde(rename = "REDLIB_DEFAULT_GEO_FILTER")]
 	pub(crate) default_geo_filter: Option<String>,
 	#[serde(rename = "REDLIB_DEFAULT_CLEAN_URLS")]
@@ -265,6 +267,7 @@ impl Config {
 			full_url: parse("REDLIB_FULL_URL"),
 			default_remove_default_feeds: parse("REDLIB_DEFAULT_REMOVE_DEFAULT_FEEDS"),
 			source_url: parse("REDLIB_SOURCE_URL"),
+			flavour_suffix: parse("REDLIB_FLAVOUR_SUFFIX"),
 			default_geo_filter: parse("REDLIB_DEFAULT_GEO_FILTER"),
 			default_clean_urls: parse("REDLIB_DEFAULT_CLEAN_URLS"),
 			default_posts_per_page: parse("REDLIB_DEFAULT_POSTS_PER_PAGE"),
@@ -320,6 +323,7 @@ fn get_setting_from_config(name: &str, config: &Config) -> Option<String> {
 		"REDLIB_FULL_URL" => config.full_url.clone(),
 		"REDLIB_DEFAULT_REMOVE_DEFAULT_FEEDS" => config.default_remove_default_feeds.clone(),
 		"REDLIB_SOURCE_URL" => config.source_url.clone(),
+		"REDLIB_FLAVOUR_SUFFIX" => config.flavour_suffix.clone(),
 		"REDLIB_DEFAULT_GEO_FILTER" => config.default_geo_filter.clone(),
 		"REDLIB_DEFAULT_CLEAN_URLS" => config.default_clean_urls.clone(),
 		"REDLIB_DEFAULT_POSTS_PER_PAGE" => config.default_posts_per_page.clone(),

@@ -60,6 +60,7 @@ Assign a default value for each instance-specific setting by passing environment
 | `ENABLE_GIPHY`            | `["on", "off"]` | `on`                                   | Proxies GIPHY GIFs in comments and plays them inline. Set to `off` to leave them as plain links.          |
 | `FULL_URL`                | String          | (empty)                                | Allows for proper URLs (for now, only needed by RSS)                                                      |
 | `SOURCE_URL`              | String          | `https://github.com/Nachtalb/redlib`   | Link to the source code for this instance. The update check on error pages compares against this GitHub repository's `main` branch. |
+| `FLAVOUR_SUFFIX`          | String          | (empty)                                | Appended to the `nachtalb` flavour in `/info.json` as `nachtalb-<suffix>`, to mark your own builds of this fork. |
 | `ENABLE_SCRAPE_FALLBACK`  | `["on", "off"]` | `on`                                   | Allows the `scraped` backend: comments scraped from Reddit's HTML. See [Scrape fallback](#scrape-fallback). |
 | `ENABLE_GQL`              | `["on", "off"]` | `on`                                   | Allows the `gql` backend: Reddit's GraphQL API. `off` never contacts it. |
 | `ENDPOINTS`, `ENDPOINTS_<KIND>` | List      | per kind                               | Which backends load Reddit data, in which order. See [Backend order](#backend-order). |
