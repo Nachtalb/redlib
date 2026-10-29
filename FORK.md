@@ -127,6 +127,7 @@ Own features:
 | `REDLIB_ENABLE_GQL` | `on` | Allow the `gql` backend: Reddit's GraphQL API. `off` never contacts GraphQL. |
 | `REDLIB_ENDPOINTS`, `REDLIB_ENDPOINTS_<KIND>` | per kind | Which backends load Reddit data, in which order. |
 | `REDLIB_SCRAPE_COMMENT_PREFETCH` | `0` | Extra requests a scraped post page makes to load more comments up front. `0` loads them only when asked. |
+| `REDLIB_GQL_FEED_REQUESTS` | `2` | Requests the `gql` backend makes to fill one r/all page. Reddit sends only about 8 posts for the first. At least `1`. |
 | `REDLIB_REDDIT_COOKIE` | (empty) | `Cookie` header of a logged-in reddit.com session, several separated by `\|`, for the `cookied-json` and `obscura-cookied-json` backends. **Secret.** |
 | `REDLIB_SOURCE_URL` | `https://github.com/Nachtalb/redlib` | Source code link in the footer, and the GitHub repository whose `main` branch the update check on error pages compares against. |
 | `REDLIB_LISTEN_PORT`, `REDLIB_LISTEN_ADDRESS`, `REDLIB_HSTS`, `REDLIB_IPV4_ONLY`, `REDLIB_IPV6_ONLY` | `8080`, `[::]`, `604800`, `off`, `off` | The listener options, so they also work in `redlib.toml`. The flags and `PORT`/`IPV4_ONLY`/`IPV6_ONLY` take precedence. Not `REDLIB_PORT`: Kubernetes sets that to `tcp://…` for a Service named `redlib`. |

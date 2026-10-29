@@ -8,7 +8,7 @@
 use super::{json as reddit_json, Backend, Failure, Fetch, Kind};
 use crate::client::{CLIENT, OAUTH_CLIENT};
 use crate::oauth::force_refresh_token;
-use crate::utils::{enable_gql, format_url, param};
+use crate::utils::{enable_gql, format_url, gql_feed_requests, param};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::DateTime;
 use log::{debug, warn};
@@ -362,9 +362,6 @@ async fn posts_by_ids(ids: Vec<&str>) -> Result<Value, String> {
 	Ok(listing(posts.iter().filter_map(post).collect()))
 }
 
-/// Requests per r/all page: Reddit ignores its page size and sends ~8 posts.
-const ALL_MAX_PAGES: usize = 5;
-
 /// r/all only returns the IDs of its posts.
 async fn all(path: &str, sort: &str) -> Result<Value, String> {
 	let mut variables = feed_variables(path, sort);
@@ -376,7 +373,8 @@ async fn all(path: &str, sort: &str) -> Result<Value, String> {
 	}
 	let mut ids = Vec::new();
 	let mut next = None;
-	for _ in 0..ALL_MAX_PAGES {
+	// The first page has ~8 posts whatever the size; later ones fill it
+	for _ in 0..gql_feed_requests() {
 		let response = query("AllFeedSdui", ALL_FEED_HASH, &variables).await?;
 		next = take_all_page(&mut ids, &response["data"]["allV3"]["elements"], limit);
 		match &next {

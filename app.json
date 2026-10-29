@@ -89,6 +89,9 @@
     "REDLIB_SCRAPE_COMMENT_PREFETCH": {
       "required": false
     },
+    "REDLIB_GQL_FEED_REQUESTS": {
+      "required": false
+    },
     "REDLIB_FULL_URL": {
       "required": false
     },

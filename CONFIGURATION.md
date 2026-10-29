@@ -64,6 +64,7 @@ Assign a default value for each instance-specific setting by passing environment
 | `ENABLE_GQL`              | `["on", "off"]` | `on`                                   | Allows the `gql` backend: Reddit's GraphQL API. `off` never contacts it. |
 | `ENDPOINTS`, `ENDPOINTS_<KIND>` | List      | per kind                               | Which backends load Reddit data, in which order. See [Backend order](#backend-order). |
 | `SCRAPE_COMMENT_PREFETCH` | Integer         | `0`                                    | Extra requests a scraped post page makes to load more comments up front. See [Scrape fallback](#scrape-fallback). |
+| `GQL_FEED_REQUESTS`       | Integer         | `2`                                    | Requests the `gql` backend makes to fill one r/all page. Reddit sends only about 8 posts for the first. |
 | `REDDIT_COOKIE`           | String          | (empty)                                | Logged-in `reddit_session=...;token_v2=...` cookies, `|`-separated, for the `cookied-json` and `obscura-cookied-json` backends. Use throwaway accounts. See [Reddit session](#reddit-session). |
 | `LISTEN_PORT`             | Integer         | `8080`                                 | Port to listen on. `-p` and the `PORT` environment variable take precedence. |
 | `LISTEN_ADDRESS`          | String          | `[::]`                                 | Address to listen on. `-a` takes precedence. |
