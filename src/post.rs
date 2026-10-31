@@ -301,13 +301,12 @@ fn build_comment(
 	// Note that in certain (seemingly random) cases, the count is simply wrong.
 	let more_count = data["count"].as_i64().unwrap_or_default();
 
-	// Scraped comments carry what loads them: the query string of a post
-	// link that loads just this placeholder.
-	let more_href = data["cursor"].as_str().filter(|cursor| !cursor.is_empty()).map_or(String::new(), |cursor| {
-		url::form_urlencoded::Serializer::new(String::new())
+	let more_load = data["cursor"].as_str().filter(|cursor| !cursor.is_empty()).map_or(String::new(), |cursor| {
+		let query = url::form_urlencoded::Serializer::new(String::new())
 			.append_pair("more_cursor", cursor)
 			.append_pair("more_query", data["more_query"].as_str().unwrap_or_default())
-			.finish()
+			.finish();
+		format!("{post_link}?{query}")
 	});
 
 	let awards: Awards = Awards::parse(&data["all_awardings"]);
@@ -316,6 +315,7 @@ fn build_comment(
 	let parent_info = parent_kind_and_id.split('_').collect::<Vec<&str>>();
 
 	let highlighted = id == highlighted_comment;
+	let more_href = more_href(post_link, parent_info[0], parent_info[1], highlighted_comment, &more_load);
 
 	let author = Author {
 		name: val(comment, "author"),
@@ -365,7 +365,18 @@ fn build_comment(
 		is_filtered,
 		more_count,
 		more_href,
+		more_load,
 		prefs: Preferences::new(req),
+	}
+}
+
+/// Where a "more" link leads without JavaScript: the parent comment's thread,
+/// which shows it with its replies, unless that is the page already open.
+fn more_href(post_link: &str, parent_kind: &str, parent_id: &str, highlighted_comment: &str, more_load: &str) -> String {
+	if parent_kind == "t1" && (parent_id != highlighted_comment || more_load.is_empty()) {
+		format!("{post_link}{parent_id}/")
+	} else {
+		more_load.to_string()
 	}
 }
 
@@ -380,5 +391,19 @@ mod tests {
 		assert_eq!(gone_comment("someone", "[ Removed by Reddit ]"), Some("removed"));
 		assert_eq!(gone_comment("someone", "[deleted]"), None);
 		assert_eq!(gone_comment("[deleted]", "hi"), None);
+	}
+
+	#[test]
+	fn test_more_href() {
+		let post = "/r/rust/comments/abc/x/";
+		let load = "/r/rust/comments/abc/x/?more_cursor=c&more_query=gql";
+		assert_eq!(more_href(post, "t1", "p1", "", load), "/r/rust/comments/abc/x/p1/");
+		assert_eq!(more_href(post, "t1", "p1", "", ""), "/r/rust/comments/abc/x/p1/");
+		assert_eq!(more_href(post, "t1", "p1", "other", load), "/r/rust/comments/abc/x/p1/");
+		// Linking to the open thread again would reload the same batch
+		assert_eq!(more_href(post, "t1", "p1", "p1", load), load);
+		assert_eq!(more_href(post, "t1", "p1", "p1", ""), "/r/rust/comments/abc/x/p1/");
+		assert_eq!(more_href(post, "t3", "abc", "", load), load);
+		assert_eq!(more_href(post, "t3", "abc", "", ""), "");
 	}
 }

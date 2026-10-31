@@ -9,7 +9,7 @@ document.addEventListener("click", async (event) => {
     link.textContent = "Loading…";
 
     try {
-        const response = await fetch(link.href);
+        const response = await fetch(link.dataset.load || link.href);
         if (!response.ok) throw new Error(response.status);
         const page = new DOMParser().parseFromString(await response.text(), "text/html");
 
@@ -20,7 +20,8 @@ document.addEventListener("click", async (event) => {
         const loaded = fetchedParent
             ? [...fetchedParent.querySelector(":scope > details > .replies").children]
             : [...page.querySelectorAll(".thread")].flatMap((thread) => [...thread.children]).filter((el) => !el.matches(".thread_nav"));
-        const fresh = loaded.filter((el) => (el.id ? !document.getElementById(el.id) : el.getAttribute("href") !== link.getAttribute("href")));
+        const target = (el) => el.dataset.load || el.getAttribute("href");
+        const fresh = loaded.filter((el) => (el.id ? !document.getElementById(el.id) : target(el) !== target(link)));
         if (!fresh.length) throw new Error("nothing new");
 
         const thread = link.parentElement;

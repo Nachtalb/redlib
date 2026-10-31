@@ -507,8 +507,10 @@ pub struct Comment {
 	pub collapsed: bool,
 	pub is_filtered: bool,
 	pub more_count: i64,
-	/// Query string of the post link that loads a scraped `more` placeholder; empty otherwise.
+	/// Where a `more` link leads without JavaScript; empty if it has nowhere to go.
 	pub more_href: String,
+	/// The page with just the comments a `more` cursor loads, which JavaScript inserts in place; empty without a cursor.
+	pub more_load: String,
 	pub prefs: Preferences,
 }
 
