@@ -91,6 +91,9 @@
 		<!-- COMMENTS -->
         {% if more_page %}
             <p class="thread_nav"><a href="{{ post.permalink }}">View all comments</a></p>
+            {% if !comments.is_empty() && comments[0].parent_kind == "t1" %}
+                <p class="thread_nav"><a href="{{ post.permalink }}{{ comments[0].parent_id }}/">Show parent comment</a></p>
+            {% endif %}
         {% endif %}
         {% for c in comments -%}
             <div class="thread">
