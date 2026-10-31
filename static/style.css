@@ -568,8 +568,7 @@ summary:not(.comment_data):hover {
     text-decoration: underline;
 }
 
-#instance_info details[open] > summary,
-#feeds[open] > summary {
+#instance_info details[open] > summary {
     margin-bottom: 10px;
 }
 
@@ -651,6 +650,8 @@ summary:not(.comment_data):hover {
 
 #feed_list {
     position: absolute;
+    /* gap here, not on the summary: that would make the menubar taller */
+    margin-top: 10px;
     display: flex;
     min-width: 100%;
     max-height: 500px;
