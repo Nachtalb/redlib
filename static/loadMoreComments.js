@@ -2,7 +2,10 @@
 // Replies open as their own thread when the column they would load into is
 // narrower than this share of the comments' full width, which is the screen
 // width on phones and capped on desktops.
-const THREAD_VIEW_MIN_WIDTH = 0.75;
+const THREAD_VIEW_MIN_WIDTH_DESKTOP = 1 / 2;
+const THREAD_VIEW_MIN_WIDTH_MOBILE = 2 / 3;
+// The mobile breakpoint of style.css.
+const mobile = matchMedia("screen and (max-width: 800px)");
 
 const views = new Map();
 const newKey = () => `${Date.now()}-${Math.random()}`;
@@ -57,9 +60,13 @@ function opensThread(link) {
     // "More comments" and links on the parent's own page load in place.
     if (!link.closest(".comment") || link.getAttribute("href") === link.dataset.load) return false;
     // The parent's replies column, which the loaded replies would fill.
-    const column = link.parentElement.getBoundingClientRect().width;
+    return link.hasAttribute("data-new-page") || tooNarrow(link.parentElement);
+}
+
+function tooNarrow(column) {
     const full = document.getElementById("comments").getBoundingClientRect().width;
-    return link.hasAttribute("data-new-page") || column < full * THREAD_VIEW_MIN_WIDTH;
+    const min = mobile.matches ? THREAD_VIEW_MIN_WIDTH_MOBILE : THREAD_VIEW_MIN_WIDTH_DESKTOP;
+    return column.getBoundingClientRect().width < full * min;
 }
 
 async function fetchPage(url) {
