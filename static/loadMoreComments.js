@@ -37,6 +37,23 @@ document.addEventListener("click", async (event) => {
     }
 });
 
+collapseDeepReplies();
+// Replies inside a collapsed comment have no width until it is opened. Every
+// open comment also fires "toggle" once after parsing, hence one run per frame.
+let collapsePending = false;
+document.addEventListener(
+    "toggle",
+    (event) => {
+        if (!event.target.open || collapsePending) return;
+        collapsePending = true;
+        requestAnimationFrame(() => {
+            collapsePending = false;
+            collapseDeepReplies();
+        });
+    },
+    true,
+);
+
 window.addEventListener("popstate", async (event) => {
     if (pagePath() === shownPath) return;
     const key = event.state?.view || newKey();
@@ -69,6 +86,26 @@ function tooNarrow(column) {
     return column.getBoundingClientRect().width < full * min;
 }
 
+// Replaces replies that would be squeezed below the thread view width with a
+// "More replies" link to their parent, like the server's links, which then
+// opens in thread view. The removed comments are fetched again from there.
+function collapseDeepReplies() {
+    for (const replies of document.querySelectorAll("#comments .comment > details > .replies")) {
+        if (!replies.isConnected || !replies.querySelector(":scope > .comment") || replies.querySelector(".highlighted")) continue;
+        if (!replies.getClientRects().length || !tooNarrow(replies)) continue;
+        const created = replies.parentElement.querySelector(":scope > summary .created");
+        if (!created) continue;
+        // Server links inside stand for hidden comments as well.
+        let hidden = replies.querySelectorAll(".comment").length;
+        for (const more of replies.querySelectorAll("a.deeper_replies")) hidden += Number(more.textContent.match(/\((\d+)\)/)?.[1] || 0);
+        const link = document.createElement("a");
+        link.className = "deeper_replies";
+        link.href = new URL(created.href).pathname + "#thread_nav";
+        link.textContent = `\u2192 More replies (${hidden})`;
+        replies.replaceChildren(link);
+    }
+}
+
 async function fetchPage(url) {
     const response = await fetch(url);
     if (!response.ok) throw new Error(response.status);
@@ -85,6 +122,7 @@ function showComments(comments, title, key) {
     const shown = document.getElementById("comments");
     views.set(currentKey, { comments: shown, title: document.title, scroll: window.scrollY });
     shown.replaceWith(comments);
+    collapseDeepReplies();
     document.title = title;
     currentKey = key;
     shownPath = pagePath();
@@ -134,5 +172,6 @@ async function loadInPlace(link) {
     } else {
         link.replaceWith(...fresh);
     }
+    collapseDeepReplies();
 }
 // @license-end
