@@ -404,7 +404,7 @@ fn build_comment(
 /// which shows it with its replies, unless that is the page already open.
 fn more_href(post_link: &str, parent_kind: &str, parent_id: &str, highlighted_comment: &str, more_load: &str) -> String {
 	if parent_kind == "t1" && (parent_id != highlighted_comment || more_load.is_empty()) {
-		format!("{post_link}{parent_id}/")
+		format!("{post_link}{parent_id}/#thread_nav")
 	} else {
 		more_load.to_string()
 	}
@@ -469,12 +469,12 @@ mod tests {
 	fn test_more_href() {
 		let post = "/r/rust/comments/abc/x/";
 		let load = "/r/rust/comments/abc/x/?more_cursor=c&more_query=gql";
-		assert_eq!(more_href(post, "t1", "p1", "", load), "/r/rust/comments/abc/x/p1/");
-		assert_eq!(more_href(post, "t1", "p1", "", ""), "/r/rust/comments/abc/x/p1/");
-		assert_eq!(more_href(post, "t1", "p1", "other", load), "/r/rust/comments/abc/x/p1/");
+		assert_eq!(more_href(post, "t1", "p1", "", load), "/r/rust/comments/abc/x/p1/#thread_nav");
+		assert_eq!(more_href(post, "t1", "p1", "", ""), "/r/rust/comments/abc/x/p1/#thread_nav");
+		assert_eq!(more_href(post, "t1", "p1", "other", load), "/r/rust/comments/abc/x/p1/#thread_nav");
 		// Linking to the open thread again would reload the same batch
 		assert_eq!(more_href(post, "t1", "p1", "p1", load), load);
-		assert_eq!(more_href(post, "t1", "p1", "p1", ""), "/r/rust/comments/abc/x/p1/");
+		assert_eq!(more_href(post, "t1", "p1", "p1", ""), "/r/rust/comments/abc/x/p1/#thread_nav");
 		assert_eq!(more_href(post, "t3", "abc", "", load), load);
 		assert_eq!(more_href(post, "t3", "abc", "", ""), "");
 	}
