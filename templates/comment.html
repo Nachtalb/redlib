@@ -1,7 +1,7 @@
 {% import "utils.html" as utils %}
 
 {% if kind == "more" && more_href != "" %}
-    <a class="deeper_replies" href="{{ more_href }}"{% if more_load != "" %} data-load="{{ more_load }}"{% endif %}>&rarr; More {% if parent_kind == "t1" %}replies{% else %}comments{% endif %}{% if more_count > 0 %} ({{ more_count }}){% endif %}</a>
+    <a class="deeper_replies" href="{{ more_href }}"{% if more_load != "" %} data-load="{{ more_load }}"{% endif %}{% if parent_kind == "t1" && prefs.more_replies_new_page == "on" %} data-new-page{% endif %}>&rarr; More {% if parent_kind == "t1" %}replies{% else %}comments{% endif %}{% if more_count > 0 %} ({{ more_count }}){% endif %}</a>
 {% else if kind == "t1" %}
     <div id="{{ id }}" class="comment" data-comment-id="{{ id }}">
         <div class="comment_left">
