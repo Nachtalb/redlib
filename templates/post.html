@@ -100,7 +100,7 @@
                 {% if single_thread %}
                     <p class="thread_nav"><a href="{{ post.permalink }}">View all comments</a></p>
                     {% if c.parent_kind == "t1" %}
-                        <p class="thread_nav"><a href="?context=9999">Show parent comments</a></p>
+                        <p class="thread_nav"><a href="{{ post.permalink }}{{ c.parent_id }}/">Show parent comment</a></p>
                     {% endif %}
                 {% endif %}
 
