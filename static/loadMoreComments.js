@@ -1,7 +1,7 @@
 // @license http://www.gnu.org/licenses/agpl-3.0.html AGPL-3.0
 document.addEventListener("click", async (event) => {
     const link = event.target.closest("a.deeper_replies");
-    if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+    if (!link || link.hasAttribute("data-new-page") || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
     event.preventDefault();
     if (link.dataset.loading) return;
     link.dataset.loading = "1";
