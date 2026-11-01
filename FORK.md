@@ -106,6 +106,7 @@ Own features:
 - **Last good page while Reddit fails**: when every backend is blocked, rate limited or down, the last good copy from a compressed RAM cache is shown, with a bar at the top saying how old it is. See [Stale cache](CONFIGURATION.md#stale-cache).
 
 - **GIF posts play like GIFs**: muted, looping, no controls, independent of the autoplay setting.
+- **Advertiser badge**: posts made with Reddit's ad tools get an "Advertiser" badge next to the author, and so do that author's comments under them. Reddit marks the posts, not the accounts: the JSON API's `is_created_from_ads_ui`, while GraphQL only gives away ads with a call to action or a disclaimer. User pages have no badge, since no API says an account advertises.
 - **One video at a time**: with autoplay on, only the video most in view plays. It pauses when scrolled away and the next one takes over.
 - **Instance info shows the values in use**: `/info` shows the default for settings that aren't configured, marked `(default)`, instead of `Unset` or `None`.
 - **`/healthz` endpoint**: returns `200 ok` without contacting Reddit.
