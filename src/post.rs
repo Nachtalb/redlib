@@ -121,10 +121,13 @@ pub async fn item(req: Request<Body>) -> Result<Response<Body>, String> {
 	if let Some(listing) = response.get_mut(1) {
 		limit_depth(listing, depth.parse().unwrap_or(0));
 	}
-	let comments = match query.as_str() {
+	let mut comments = match query.as_str() {
 		"" => parse_comments(&response[1], &post.permalink, &post.author.name, highlighted_comment, &get_filters(&req), &req),
 		_ => query_comments(&response[1], &post.permalink, &post.author.name, highlighted_comment, &get_filters(&req), &query, &req),
 	};
+	if post.author.advertiser {
+		mark_advertiser(&mut comments, &post.author.name);
+	}
 
 	// Use the Post and Comment structs to generate a website to show users
 	Ok(template(&PostTemplate {
@@ -360,6 +363,7 @@ fn build_comment(
 			foreground_color: val(comment, "author_flair_text_color"),
 		},
 		distinguished: val(comment, "distinguished"),
+		advertiser: false,
 	};
 	let is_filtered = filters.contains(&["u_", author.name.as_str()].concat());
 
@@ -407,6 +411,14 @@ fn more_href(post_link: &str, parent_kind: &str, parent_id: &str, highlighted_co
 		format!("{post_link}{parent_id}/#thread_nav")
 	} else {
 		more_load.to_string()
+	}
+}
+
+/// Ad posts' OPs are advertisers, so their replies get the badge too.
+pub(crate) fn mark_advertiser(comments: &mut [Comment], advertiser: &str) {
+	for comment in comments {
+		comment.author.advertiser = comment.author.name == advertiser;
+		mark_advertiser(&mut comment.replies, advertiser);
 	}
 }
 
