@@ -18,6 +18,7 @@
             <summary class="comment_data">
                 {% if author.name != "[deleted]" %}
                     <a class="comment_author {{ author.distinguished }} {% if author.name == post_author %}op{% endif %}" href="/user/{{ author.name }}">u/{{ author.name }}</a>
+                    {% if author.advertiser %}<small class="author_badge" title="OP of an ad post">Advertiser</small>{% endif %}
                 {% else %}
                     <span class="comment_author {{ author.distinguished }}">u/[deleted]</span>
                 {% endif %}

@@ -111,6 +111,8 @@ pub struct Author {
 	pub name: String,
 	pub flair: Flair,
 	pub distinguished: String,
+	/// Posted from Reddit's ads platform, or the advertiser OP of such a post
+	pub advertiser: bool,
 }
 
 #[derive(Serialize)]
@@ -428,6 +430,7 @@ impl Post {
 						foreground_color: val(post, "author_flair_text_color"),
 					},
 					distinguished: val(post, "distinguished"),
+					advertiser: data["is_created_from_ads_ui"] == true,
 				},
 				score: if data["hide_score"].as_bool().unwrap_or_default() {
 					("\u{2022}".to_string(), "Hidden".to_string())
@@ -978,6 +981,7 @@ pub async fn parse_post(post: &Value) -> Post {
 				foreground_color: val(post, "author_flair_text_color"),
 			},
 			distinguished: val(post, "distinguished"),
+			advertiser: post["data"]["is_created_from_ads_ui"] == true,
 		},
 		permalink,
 		link_title: val(post, "link_title"),

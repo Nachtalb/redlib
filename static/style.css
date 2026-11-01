@@ -1325,6 +1325,17 @@ a.search_subreddit:hover .search_subreddit_name {
     font-weight: bold;
 }
 
+/* Not `.advertiser`: EasyList hides that class */
+.author_badge {
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 1px 4px;
+    font-size: 11px;
+    border-radius: 5px;
+    font-weight: bold;
+    vertical-align: middle;
+}
+
 .spoiler {
     color: var(--spoiler);
     margin-left: 5px;

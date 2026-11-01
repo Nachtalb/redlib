@@ -473,6 +473,8 @@ fn post(node: &Value) -> Option<Value> {
 		// Search results only name the type of their media
 		"post_hint": node["postHint"].as_str().or(node["media"]["typeHint"].as_str().filter(|hint| *hint == "IMAGE")).map(|hint| hint.to_lowercase().replace('_', ":")),
 		"all_awardings": awards(node),
+		// Only ads have a call to action ("Learn More") or a disclaimer
+		"is_created_from_ads_ui": node["callToAction"].is_string() || node["adSupplementaryTextRichtext"].is_string(),
 	});
 	if node["isSelfPost"] != true {
 		data["url_overridden_by_dest"] = node["url"].clone();
@@ -1297,6 +1299,21 @@ mod tests {
 		assert_eq!(search_pane("/search.json?q=rust&type=comment"), "comments");
 		assert_eq!(search_pane("/r/rust/search.json?q=rust&type=media"), "media");
 		assert_eq!(search_pane("/search.json?q=rust"), "posts");
+	}
+
+	#[test]
+	fn test_ads_are_marked() {
+		let ad = json_value!({ "__typename": "ProfilePost", "id": "t3_1xjiiv6", "callToAction": "Learn More" });
+		let normal = json_value!({ "__typename": "SubredditPost", "id": "t3_1xl5x1j", "callToAction": null, "adSupplementaryTextRichtext": null });
+		assert_eq!(post(&ad).unwrap()["data"]["is_created_from_ads_ui"], true);
+		assert_eq!(post(&normal).unwrap()["data"]["is_created_from_ads_ui"], false);
+
+		let response: Value = serde_json::from_str(include_str!("../../tests/fixtures/gql/post_comments.json")).unwrap();
+		let tree = listing(comment_tree(&response, "1xe5jpg").unwrap());
+		let mut comments = crate::post::parse_comments(&tree, "/r/AskReddit/comments/1xe5jpg/x/", "op", "", &Default::default(), &request());
+		crate::post::mark_advertiser(&mut comments, "aubreynewmanoc");
+		assert!(comments[0].author.advertiser);
+		assert!(!comments[0].replies[0].author.advertiser);
 	}
 
 	#[test]

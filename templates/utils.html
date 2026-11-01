@@ -71,6 +71,7 @@
             <a class="post_subreddit" href="/r/{{ post.community }}">r/{{ post.community }}</a>
             <span class="dot">&bull;</span>
             <a class="post_author {{ post.author.distinguished }}" href="/user/{{ post.author.name }}">u/{{ post.author.name }}</a>
+            {% if post.author.advertiser %}<small class="author_badge" title="Posted with Reddit's ad tools">Advertiser</small>{% endif %}
             {% if post.author.flair.flair_parts.len() > 0 %}
                 <small class="author_flair">{{ render_flair(post.author.flair.flair_parts) }}</small>
             {% endif %}
@@ -230,6 +231,7 @@
             <a class="post_subreddit" href="/{{ community }}">{{ community }}</a>
             <span class="dot">&bull;</span>
             <a class="post_author {{ post.author.distinguished }}" href="/u/{{ post.author.name }}">u/{{ post.author.name }}</a>
+            {% if post.author.advertiser %}<small class="author_badge" title="Posted with Reddit's ad tools">Advertiser</small>{% endif %}
             <span class="dot">&bull;</span>
             <span class="created" title="{{ post.created }}">{{ post.rel_time }}</span>
             {% if !post.awards.is_empty() && prefs.hide_awards != "on" %}
