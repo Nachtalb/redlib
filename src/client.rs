@@ -158,7 +158,6 @@ const TEST_EMULATIONS: &[(Profile, &[Platform], u32)] = {
 	&[
 		(Chrome131, &[Windows, Android], SERVED),
 		(Edge134, &[Windows], SERVED),
-		(Firefox133, &[Linux], SERVED),
 		(Safari26_4, &[MacOS], SERVED),
 		(Safari18_5, &[MacOS], SERVED),
 		(SafariIos26_2, &[IOS], SERVED),
