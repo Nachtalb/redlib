@@ -2252,6 +2252,19 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn test_deleted_post_links_pushshift() {
+		let post = serde_json::json!({ "kind": "t3", "data": {
+			"id": "abc", "title": "t", "author": "[deleted]", "subreddit": "rust", "permalink": "/r/rust/comments/abc/t/",
+			"is_self": true, "selftext": "[deleted]", "selftext_html": "<div class=\"md\"><p>[deleted]</p></div>",
+		}});
+		let body = super::parse_post(&post).await.body;
+		assert!(
+			body.contains("[deleted] — <a href=\"https://undelete.pullpush.io/r/rust/comments/abc/t/\">view deleted post</a>"),
+			"{body}"
+		);
+	}
+
+	#[tokio::test]
 	async fn test_needs_hls_for_audio() {
 		let video = |has_audio: Value| {
 			json!({
