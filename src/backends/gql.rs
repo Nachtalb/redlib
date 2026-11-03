@@ -91,7 +91,39 @@ async fn thread(path: &str, quarantine: bool) -> Result<Value, String> {
 	let (id, comment_id) = parse_path(path).ok_or_else(|| format!("Couldn't parse post path | {path}"))?;
 
 	let (post, comments) = futures_lite::future::zip(reddit_json(format!("/by_id/t3_{id}.json?raw_json=1"), quarantine), comments(&id, comment_id, path)).await;
-	Ok(json_value!([post?, listing(comments?)]))
+	let (comments, info) = comments?;
+	let mut post = post?;
+	// PostsByIds drops posts their author deleted; PostComments still has the title
+	if post["data"]["children"].as_array().is_some_and(Vec::is_empty) {
+		if let Some(deleted) = deleted_post(&info, path) {
+			post = listing(vec![deleted]);
+		}
+	}
+	Ok(json_value!([post, listing(comments)]))
+}
+
+/// A JSON API post for a `DeletedSubredditPost`, which has no author, body, score or date.
+fn deleted_post(info: &Value, path: &str) -> Option<Value> {
+	if info["__typename"] != "DeletedSubredditPost" {
+		return None;
+	}
+	let fullname = info["id"].as_str()?;
+	let id = fullname.strip_prefix("t3_").unwrap_or(fullname);
+	let sub = path.strip_prefix("/r/").and_then(|p| p.split('/').next()).unwrap_or_default();
+	Some(json_value!({ "kind": "t3", "data": {
+		"id": id,
+		"name": fullname,
+		"title": info["title"],
+		"author": "[deleted]",
+		"subreddit": sub,
+		"permalink": format!("/r/{sub}/comments/{id}/"),
+		"is_self": true,
+		"selftext": "[deleted]",
+		"selftext_html": "<div class=\"md\"><p>[deleted]</p></div>",
+		"num_comments": info["commentCount"],
+		"locked": info["isLocked"] == true,
+		"over_18": info["isNsfw"] == true,
+	}}))
 }
 
 fn parse_path(path: &str) -> Option<(String, Option<String>)> {
@@ -115,7 +147,8 @@ fn url_attr(value: Option<&str>) -> String {
 	htmlescape::encode_minimal(&format_url(value))
 }
 
-async fn comments(id: &str, comment_id: Option<String>, path: &str) -> Result<Vec<Value>, String> {
+/// The comments of a post, and the post as PostComments sees it (without its comments).
+async fn comments(id: &str, comment_id: Option<String>, path: &str) -> Result<(Vec<Value>, Value), String> {
 	let sort = param(path, "sort").filter(|s| !s.is_empty()).unwrap_or_else(|| "confidence".to_string());
 	let mut variables = json_value!({
 		"id": format!("t3_{id}"),
@@ -132,8 +165,13 @@ async fn comments(id: &str, comment_id: Option<String>, path: &str) -> Result<Ve
 		variables["after"] = cursor.into();
 	}
 
-	let response = query("PostComments", POST_COMMENTS_HASH, &variables).await?;
-	comment_tree(&response, id)
+	let mut response = query("PostComments", POST_COMMENTS_HASH, &variables).await?;
+	let comments = comment_tree(&response, id)?;
+	let mut info = response["data"]["postInfoById"].take();
+	if let Some(info) = info.as_object_mut() {
+		info.remove("commentForest");
+	}
+	Ok((comments, info))
 }
 
 fn comment_tree(response: &Value, post_id: &str) -> Result<Vec<Value>, String> {
@@ -994,6 +1032,20 @@ fn table(node: &Value, media: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn test_deleted_post() {
+		let info = json_value!({ "__typename": "DeletedSubredditPost", "commentCount": 1819, "id": "t3_1xlfmka", "isLocked": false, "isNsfw": false, "title": "What exactly is \"ranch sauce\"?" });
+		let post = deleted_post(&info, "/r/IWantToAskAnAmerican/comments/1xlfmka/what_exactly.json?&raw_json=1").unwrap();
+		let data = &post["data"];
+		assert_eq!(
+			(data["id"].as_str(), data["title"].as_str(), data["author"].as_str()),
+			(Some("1xlfmka"), Some("What exactly is \"ranch sauce\"?"), Some("[deleted]"))
+		);
+		assert_eq!(data["permalink"], "/r/IWantToAskAnAmerican/comments/1xlfmka/");
+		assert_eq!(data["num_comments"], 1819);
+		assert!(deleted_post(&json_value!({ "__typename": "SubredditPost", "id": "t3_x" }), "/r/a/comments/x/").is_none());
+	}
+
 	use super::*;
 
 	#[test]
