@@ -1522,6 +1522,9 @@ pub fn format_num(num: i64) -> (String, String) {
 
 /// Parse a relative and absolute time from a UNIX timestamp
 pub fn time(created: f64) -> (String, String) {
+	if created == 0.0 {
+		return (String::new(), String::new());
+	}
 	let time = OffsetDateTime::from_unix_timestamp(created.round() as i64).unwrap_or(OffsetDateTime::UNIX_EPOCH);
 	let now = OffsetDateTime::now_utc();
 	let min = time.min(now);
