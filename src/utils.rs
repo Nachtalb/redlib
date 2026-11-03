@@ -2040,6 +2040,12 @@ fn get_mime_type(url: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
 	#[test]
+	fn test_time_unknown_is_empty() {
+		// A missing timestamp parses as 0; show nothing instead of Jan 01 1970
+		assert_eq!(super::time(0.0), (String::new(), String::new()));
+	}
+
+	#[test]
 	fn test_combined_feed_subreddits() {
 		assert_eq!(
 			super::combined_feed_subreddits("/r/news%2Bworldnews%2Bu_spez/new.json?&raw_json=1"),
