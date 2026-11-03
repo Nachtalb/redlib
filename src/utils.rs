@@ -955,9 +955,16 @@ pub async fn parse_post(post: &Value) -> Post {
 
 	let poll = Poll::parse(&post["data"]["poll_data"]);
 
-	let body = if val(post, "removed_by_category") == "moderator" {
+	let gone = if val(post, "removed_by_category") == "moderator" {
+		Some("removed")
+	} else if val(post, "author") == "[deleted]" && val(post, "selftext") == "[deleted]" {
+		Some("deleted")
+	} else {
+		None
+	};
+	let body = if let Some(state) = gone {
 		format!(
-			"<div class=\"md\"><p>[removed] — <a href=\"https://{}{permalink}\">view removed post</a></p></div>",
+			"<div class=\"md\"><p>[{state}] — <a href=\"https://{}{permalink}\">view {state} post</a></p></div>",
 			get_setting("REDLIB_PUSHSHIFT_FRONTEND").unwrap_or_else(|| String::from(crate::config::DEFAULT_PUSHSHIFT_FRONTEND)),
 		)
 	} else {
