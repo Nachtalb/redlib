@@ -57,6 +57,11 @@
         {% endfor %}
     </select>
 </div>
+<div class="prefs-group">
+    <label for="collapse_root_link">Show "collapse root" link on nested comments:</label>
+    <input type="hidden" value="off" name="collapse_root_link">
+    <input type="checkbox" name="collapse_root_link" id="collapse_root_link" {% if prefs.collapse_root_link=="on" %}checked{% endif %}>
+</div>
 </fieldset>
 <fieldset>
     <legend>Content</legend>

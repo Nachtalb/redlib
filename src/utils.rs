@@ -722,12 +722,13 @@ impl LegacyPreferences {
 			posts_per_page: defaults(Preferences::default_instance_setting),
 			max_comment_thread_depth: defaults(Preferences::default_instance_setting),
 			more_replies_new_page: defaults(Preferences::default_off),
+			collapse_root_link: defaults(Preferences::default_on),
 		})
 	}
 }
 
 #[derive(Default, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[revisioned(revision = 3)]
+#[revisioned(revision = 4)]
 pub struct Preferences {
 	#[revision(start = 1)]
 	#[serde(skip_serializing, skip_deserializing)]
@@ -787,6 +788,8 @@ pub struct Preferences {
 	// Revision 2 codes are already out there, so new fields can't join it.
 	#[revision(start = 3, default_fn = "default_off")]
 	pub more_replies_new_page: String,
+	#[revision(start = 4, default_fn = "default_on")]
+	pub collapse_root_link: String,
 }
 
 fn serialize_vec_with_plus<S>(vec: &[String], serializer: S) -> Result<S::Ok, S::Error>
@@ -850,6 +853,7 @@ impl Preferences {
 			posts_per_page: setting(req, "posts_per_page"),
 			max_comment_thread_depth: setting(req, "max_comment_thread_depth"),
 			more_replies_new_page: setting(req, "more_replies_new_page"),
+			collapse_root_link: setting_or_default(req, "collapse_root_link", "on".to_string()),
 		}
 	}
 
@@ -890,6 +894,9 @@ impl Preferences {
 	}
 	fn default_off(_revision: u16) -> Result<String, Error> {
 		Ok("off".to_owned())
+	}
+	fn default_on(_revision: u16) -> Result<String, Error> {
+		Ok("on".to_owned())
 	}
 }
 
@@ -2144,10 +2151,11 @@ mod tests {
 			posts_per_page: "25".to_owned(),
 			max_comment_thread_depth: "-1".to_owned(),
 			more_replies_new_page: "on".to_owned(),
+			collapse_root_link: "on".to_owned(),
 		};
 		let urlencoded = serde_urlencoded::to_string(prefs).expect("Failed to serialize Prefs");
 
-		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off&geo_filter=GLOBAL&clean_urls=off&posts_per_page=25&max_comment_thread_depth=-1&more_replies_new_page=on");
+		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off&geo_filter=GLOBAL&clean_urls=off&posts_per_page=25&max_comment_thread_depth=-1&more_replies_new_page=on&collapse_root_link=on");
 	}
 
 	#[test]
@@ -2343,6 +2351,7 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 			posts_per_page: "50".to_owned(),
 			max_comment_thread_depth: "3".to_owned(),
 			more_replies_new_page: "on".to_owned(),
+			collapse_root_link: "off".to_owned(),
 			..Preferences::default()
 		}
 	}
@@ -2378,6 +2387,7 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 			decoded,
 			Preferences {
 				more_replies_new_page: "off".to_owned(),
+				collapse_root_link: "on".to_owned(),
 				..sample_prefs()
 			}
 		);

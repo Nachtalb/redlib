@@ -299,6 +299,9 @@ async fn main() {
 	app
 		.at("/loadMoreComments.js")
 		.get(|_| resource(include_str!("../static/loadMoreComments.js"), "text/javascript", false).boxed());
+
+	app.at("/collapseRoot.js")
+		.get(|_| resource(include_str!("../static/collapseRoot.js"), "text/javascript", false).boxed());
 	app
 		.at("/searchTabs.js")
 		.get(|_| resource(include_str!("../static/searchTabs.js"), "text/javascript", false).boxed());

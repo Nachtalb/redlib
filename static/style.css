@@ -464,6 +464,21 @@ aside {
     opacity: 0.5;
 }
 
+a.collapse_root {
+    font-size: 0.8em;
+    text-decoration: none;
+    display: none;
+}
+
+/* collapseRoot.js turns the link on; without it the href="#" would do nothing. */
+.js-enabled a.collapse_root {
+    display: inline;
+}
+
+a.collapse_root:hover {
+    text-decoration: underline;
+}
+
 /* User & Subreddit */
 
 #user,

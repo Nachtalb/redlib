@@ -43,6 +43,9 @@
     {% endif %}
     <script src="/downloadGallery.js?v={{ crate::utils::short_git_hash() }}" defer></script>
     <script src="/loadMoreComments.js?v={{ crate::utils::short_git_hash() }}" defer></script>
+    {% if prefs.collapse_root_link == "on" %}
+        <script src="/collapseRoot.js?v={{ crate::utils::short_git_hash() }}" defer></script>
+    {% endif %}
 {% endblock %}
 
 {% block subscriptions %}

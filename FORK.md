@@ -102,6 +102,7 @@ Own features:
 - **Scraped comments load on demand**: a scraped post page shows Reddit's first batch of comments. "More comments" and "More replies" open a page with the next batch, one request to Reddit per click, with a link back to all comments. `REDLIB_SCRAPE_COMMENT_PREFETCH` loads more up front.
 - **"More replies" and "More comments" load in place**: the comments appear where the link was instead of opening another page. Without JavaScript the link opens the page as before.
 - **Always open replies in thread view**: a setting that makes "More replies" open the parent comment's page (thread view) instead of loading in place, for narrow screens where deep threads get squeezed ([#107](https://github.com/Nachtalb/redlib/issues/107)). With it off, replies load in place, and open in thread view only when they would get less than half of the comments' width (2/3 on screens up to 800px). With JavaScript, replies already on the page that would be that narrow are replaced by a "More replies" link too, when the page loads and after loading in place.
+- **"Collapse root" link on nested comments**: a "[collapse root]" link in every reply's byline that collapses the thread's top-level comment and scrolls to it, for jumping out of a deep thread after reading. On by default; Settings → Interface has a checkbox to turn it off, and instances can set `REDLIB_DEFAULT_COLLAPSE_ROOT_LINK`. Only shows with JavaScript; links in replies loaded in place keep working.
 - **Threads open without a page load**: with JavaScript, "Show parent comment", "View all comments" and "More replies" that open a thread swap in that page's comments, with a working address and back button.
 - **Last good page while Reddit fails**: when every backend is blocked, rate limited or down, the last good copy from a compressed RAM cache is shown, with a bar at the top saying how old it is. See [Stale cache](CONFIGURATION.md#stale-cache).
 
@@ -147,6 +148,7 @@ Each has an instance default via `REDLIB_DEFAULT_<NAME>`:
 | Posts per page | `REDLIB_DEFAULT_POSTS_PER_PAGE` | `25` |
 | Max comment thread depth | `REDLIB_DEFAULT_MAX_COMMENT_THREAD_DEPTH` | `0` (unlimited) |
 | Always open replies in thread view | `REDLIB_DEFAULT_MORE_REPLIES_NEW_PAGE` | `off` |
+| "Collapse root" link on nested comments | `REDLIB_DEFAULT_COLLAPSE_ROOT_LINK` | `on` |
 
 All of them are documented in [CONFIGURATION.md](CONFIGURATION.md), `.env.example` and `app.json`.
 
@@ -156,7 +158,7 @@ Settings codes (Settings → export / restore) now carry a format revision:
 
 - **New codes** start with a marker byte and are revisioned. A code exported before a setting existed restores that setting to its default.
 - **Old codes** from upstream Redlib still restore. Settings they don't contain get their defaults.
-- Settings added in this fork belong to revision 2, except "Always open replies in thread view" in revision 3: revision 2 codes were already in use, and a new field in revision 2 would stop them from restoring.
+- Settings added in this fork belong to revision 2, except "Always open replies in thread view" in revision 3 and the "collapse root" link in revision 4: earlier revision codes were already in use, and a new field in an old revision would stop them from restoring.
 
 Codes exported from this fork can't be restored on upstream Redlib.
 
