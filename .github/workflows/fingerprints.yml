@@ -20,3 +20,6 @@ jobs:
         run: >-
           cargo test --locked --lib client::tests::test_probe_fingerprints --
           --ignored --nocapture --exact
+        env:
+          # The throwaway account's session, for the session columns
+          REDLIB_REDDIT_COOKIE: ${{ secrets.REDLIB_REDDIT_COOKIE }}
