@@ -2331,7 +2331,7 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 	/// A code as the old plain-bincode exporter wrote it: upstream fields, optionally + geo_filter.
 	fn legacy_code(prefs: &Preferences, with_geo: bool) -> Vec<u8> {
 		let mut bytes = bincode::serialize(prefs).unwrap();
-		let newer = (&prefs.clean_urls, &prefs.posts_per_page, &prefs.max_comment_thread_depth, &prefs.more_replies_new_page);
+		let newer = (&prefs.clean_urls, &prefs.posts_per_page, &prefs.max_comment_thread_depth, &prefs.more_replies_new_page, &prefs.collapse_root_link);
 		let mut cut = bincode::serialized_size(&newer).unwrap() as usize;
 		if !with_geo {
 			cut += bincode::serialized_size(&prefs.geo_filter).unwrap() as usize;
