@@ -300,7 +300,8 @@ async fn main() {
 		.at("/loadMoreComments.js")
 		.get(|_| resource(include_str!("../static/loadMoreComments.js"), "text/javascript", false).boxed());
 
-	app.at("/collapseRoot.js")
+	app
+		.at("/collapseRoot.js")
 		.get(|_| resource(include_str!("../static/collapseRoot.js"), "text/javascript", false).boxed());
 	app
 		.at("/searchTabs.js")
