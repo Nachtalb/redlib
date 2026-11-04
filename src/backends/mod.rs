@@ -158,7 +158,7 @@ impl Kind {
 			["user" | "u", ..] => Self::User,
 			["search", ..] | ["subreddits" | "users", "search", ..] | ["r", _, "search", ..] => Self::Search,
 			["r", _, "wiki", ..] | ["wiki", ..] => Self::Wiki,
-			["r", _, "about", ..] => Self::Subreddit,
+			["r", _, "about", ..] | ["r", _, "api", "widgets"] => Self::Subreddit,
 			["r", "all", ..] => Self::All,
 			_ => Self::Listing,
 		}
@@ -541,6 +541,7 @@ mod tests {
 			("/r/all.json", Kind::All),
 			("/r/all/search.json?q=rust", Kind::Search),
 			("/r/rust/about.json?raw_json=1", Kind::Subreddit),
+			("/r/rust/api/widgets?raw_json=1", Kind::Subreddit),
 			("/search.json?q=rust", Kind::Search),
 			("/r/rust/search.json?q=async&restrict_sr=on", Kind::Search),
 			("/subreddits/search.json?q=rust&limit=3", Kind::Search),
