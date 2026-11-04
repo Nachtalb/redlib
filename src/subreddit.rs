@@ -580,7 +580,7 @@ async fn subreddit(sub: &str, quarantined: bool) -> Result<Subreddit, String> {
 fn subreddit_from(res: &serde_json::Value) -> Subreddit {
 	// Reddit sends big counts as floats, e.g. `31604051.0` for r/news
 	let members = res["data"]["subscribers"].as_f64().unwrap_or_default() as i64;
-	let active = res["data"]["accounts_active"].as_f64().unwrap_or_default() as i64;
+	let count = |key| res["data"][key].as_f64().map(|n| format_num(n as i64));
 
 	// Fetch subreddit icon either from the community_icon or icon_img value
 	let community_icon: &str = res["data"]["community_icon"].as_str().unwrap_or_default();
@@ -594,7 +594,8 @@ fn subreddit_from(res: &serde_json::Value) -> Subreddit {
 		// moderators: moderators_list(sub, quarantined).await.unwrap_or_default(),
 		icon: format_url(&icon),
 		members: format_num(members),
-		active: format_num(active),
+		weekly_visitors: count("weekly_active_users"),
+		weekly_contributions: count("weekly_contributions"),
 		wiki: res["data"]["wiki_enabled"].as_bool().unwrap_or_default(),
 		nsfw: res["data"]["over18"].as_bool().unwrap_or_default(),
 	}
@@ -683,6 +684,15 @@ mod tests {
 		assert_eq!(subreddit_from(&about).members, format_num(31604051));
 		let about = serde_json::json!({ "data": { "display_name": "rust", "subscribers": 429352 } });
 		assert_eq!(subreddit_from(&about).members, format_num(429352));
+	}
+
+	#[test]
+	fn test_weekly_stats_only_when_reddit_sends_them() {
+		let about = serde_json::json!({ "data": { "weekly_active_users": 4088390, "weekly_contributions": 63142.0 } });
+		let sub = subreddit_from(&about);
+		assert_eq!((sub.weekly_visitors, sub.weekly_contributions), (Some(format_num(4088390)), Some(format_num(63142))));
+		let sub = subreddit_from(&serde_json::json!({ "data": { "accounts_active": 0 } }));
+		assert_eq!((sub.weekly_visitors, sub.weekly_contributions), (None, None));
 	}
 
 	#[test]

@@ -573,6 +573,14 @@ summary:not(.comment_data):hover {
 }
 
 #user_details > label,
+/* label above its number, one column per stat */
+#sub_details {
+    grid-template-columns: none;
+    grid-template-rows: auto auto;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+}
+
 #sub_details > label {
     color: var(--accent);
 }

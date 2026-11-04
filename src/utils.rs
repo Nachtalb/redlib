@@ -637,7 +637,10 @@ pub struct Subreddit {
 	// pub moderators: Vec<String>,
 	pub icon: String,
 	pub members: (String, String),
-	pub active: (String, String),
+	/// Reddit's weekly visitors and contributions; it reports no active users
+	/// anymore. Only gql has them.
+	pub weekly_visitors: Option<(String, String)>,
+	pub weekly_contributions: Option<(String, String)>,
 	pub wiki: bool,
 	pub nsfw: bool,
 }

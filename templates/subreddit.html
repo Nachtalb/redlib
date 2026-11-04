@@ -103,9 +103,15 @@
                             <p id="sub_description">{{ sub.description }}</p>
                             <div id="sub_details">
                                 <label>Members</label>
-                                <label>Active</label>
                                 <div title="{{ sub.members.1 }}">{{ sub.members.0 }}</div>
-                                <div title="{{ sub.active.1 }}">{{ sub.active.0 }}</div>
+                                {% if let Some(visitors) = sub.weekly_visitors %}
+                                    <label title="Weekly visitors">Visitors</label>
+                                    <div title="{{ visitors.1 }} weekly visitors">{{ visitors.0 }}</div>
+                                {% endif %}
+                                {% if let Some(contributions) = sub.weekly_contributions %}
+                                    <label title="Weekly posts and comments">Contributions</label>
+                                    <div title="{{ contributions.1 }} weekly contributions">{{ contributions.0 }}</div>
+                                {% endif %}
                             </div>
                             <div id="sub_actions">
                                 <div id="sub_subscription">

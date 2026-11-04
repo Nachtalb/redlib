@@ -596,6 +596,8 @@ fn subreddit(node: &Value) -> Option<Value> {
 		"icon_img": node["styles"]["legacyIcon"]["url"],
 		"subscribers": node["subscribersCount"],
 		"accounts_active": node["activeCount"],
+		"weekly_active_users": node["communityStats"]["weeklyActiveUsersCount"],
+		"weekly_contributions": node["communityStats"]["weeklyContributionsCount"],
 		"wiki_enabled": node["wikiEditMode"].as_str().is_some_and(|mode| mode != "DISABLED"),
 		"over18": node["isNsfw"] == true,
 	} }))
@@ -1413,6 +1415,14 @@ mod tests {
 			html.contains(r#"<h3>Please read <a href="https://www.rust-lang.org/policies/code-of-conduct"><strong>The Rust Community Code of Conduct</strong></a></h3><hr>"#),
 			"{html}"
 		);
+	}
+
+	#[test]
+	fn test_subreddit_weekly_stats() {
+		let node = json_value!({ "name": "news", "communityStats": { "weeklyActiveUsersCount": 4088390, "weeklyContributionsCount": 63142 } });
+		let about = subreddit(&node).unwrap();
+		assert_eq!(about["data"]["weekly_active_users"], 4088390);
+		assert_eq!(about["data"]["weekly_contributions"], 63142);
 	}
 
 	#[test]
