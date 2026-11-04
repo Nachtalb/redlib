@@ -67,15 +67,9 @@ wreq = { version = "0.16", features = ["brotli", "gzip", "deflate", "zstd", "jso
 wreq-util = { version = "0.2" }
 scraper = { version = "0.29.0", default-features = false }
 clearurls = "0.0.4"
-obscura = { git = "https://github.com/h4ckf0r0day/obscura", rev = "3285fbc2357a60aa3a8dcce9fda95a155099fc42", features = ["stealth"], optional = true }
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "html", "regex-fancy", "parsing"] }
 lru = "0.18"
 zstd = "0.13"
-
-[features]
-default = []
-obscura = ["dep:obscura"]
-
 
 [dev-dependencies]
 lipsum = "0.9.1"

@@ -13,8 +13,6 @@ pub mod gql;
 mod json;
 #[cfg(test)]
 mod live_tests;
-#[cfg(feature = "obscura")]
-pub mod obscura;
 mod score;
 pub mod scraped;
 pub mod stale;
@@ -66,14 +64,7 @@ pub trait Backend: Sync {
 pub type Fetch<'a> = Pin<Box<dyn Future<Output = Result<Value, Failure>> + Send + 'a>>;
 
 /// Every backend this build has.
-static BACKENDS: &[&dyn Backend] = &[
-	#[cfg(feature = "obscura")]
-	&obscura::ObscuraCookiedJson,
-	&json::Json,
-	&gql::Gql,
-	&cookied_json::CookiedJson,
-	&scraped::Scraped,
-];
+static BACKENDS: &[&dyn Backend] = &[&json::Json, &gql::Gql, &cookied_json::CookiedJson, &scraped::Scraped];
 
 /// The kinds of Reddit data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,13 +106,13 @@ impl Kind {
 	/// always blocked for comments, so it goes last there.
 	fn default_order(self) -> &'static str {
 		match self {
-			Self::Post | Self::Subreddit | Self::Search => "gql, json, cookied-json, obscura-cookied-json",
+			Self::Post | Self::Subreddit | Self::Search => "gql, json, cookied-json",
 			// Reddit answers anonymous user JSON with 403 whatever the client
-			Self::User => "gql, cookied-json, obscura-cookied-json",
-			Self::Comments => "gql, cookied-json, obscura-cookied-json, scraped, json",
-			Self::Listing => "json, gql, cookied-json, obscura-cookied-json",
-			Self::All => "json, gql, cookied-json, obscura-cookied-json",
-			Self::Wiki | Self::Duplicates => "json, cookied-json, obscura-cookied-json",
+			Self::User => "gql, cookied-json",
+			Self::Comments => "gql, cookied-json, scraped, json",
+			Self::Listing => "json, gql, cookied-json",
+			Self::All => "json, gql, cookied-json",
+			Self::Wiki | Self::Duplicates => "json, cookied-json",
 		}
 	}
 
@@ -451,11 +442,6 @@ mod tests {
 		order.iter().map(|backend| backend.name()).collect()
 	}
 
-	/// `expected` without the backends this build doesn't have.
-	fn in_build<'a>(expected: &[&'a str]) -> Vec<&'a str> {
-		expected.iter().copied().filter(|name| BACKENDS.iter().any(|backend| backend.name() == *name)).collect()
-	}
-
 	#[test]
 	fn test_json_path() {
 		assert_eq!(Kind::json_path("/r/all/new.json?raw_json=1"), "/r/all+/new.json?raw_json=1");
@@ -491,10 +477,10 @@ mod tests {
 	#[test]
 	#[sealed_test]
 	fn test_default_order() {
-		assert_eq!(names(&order(Kind::Comments)), in_build(&["gql", "cookied-json", "obscura-cookied-json", "scraped", "json"]));
-		assert_eq!(names(&order(Kind::Listing)), in_build(&["json", "gql", "cookied-json", "obscura-cookied-json"]));
-		assert_eq!(names(&order(Kind::Wiki)), in_build(&["json", "cookied-json", "obscura-cookied-json"]));
-		assert_eq!(names(&order(Kind::All)), in_build(&["json", "gql", "cookied-json", "obscura-cookied-json"]));
+		assert_eq!(names(&order(Kind::Comments)), ["gql", "cookied-json", "scraped", "json"]);
+		assert_eq!(names(&order(Kind::Listing)), ["json", "gql", "cookied-json"]);
+		assert_eq!(names(&order(Kind::Wiki)), ["json", "cookied-json"]);
+		assert_eq!(names(&order(Kind::All)), ["json", "gql", "cookied-json"]);
 	}
 
 	#[test]
@@ -507,14 +493,14 @@ mod tests {
 	#[test]
 	#[sealed_test(env = [("REDLIB_ENDPOINTS", ""), ("REDLIB_ENDPOINTS_LISTING", "gql")])]
 	fn test_empty_setting_means_unset() {
-		assert_eq!(names(&order(Kind::Wiki)), in_build(&["json", "cookied-json", "obscura-cookied-json"]));
+		assert_eq!(names(&order(Kind::Wiki)), ["json", "cookied-json"]);
 		assert_eq!(names(&order(Kind::Listing)), ["gql"]);
 	}
 
 	#[test]
 	#[sealed_test(env = [("REDLIB_ENDPOINTS_USER", "nonsense")])]
 	fn test_unusable_order_falls_back_to_the_default() {
-		assert_eq!(names(&order(Kind::User)), in_build(&["gql", "cookied-json", "obscura-cookied-json"]));
+		assert_eq!(names(&order(Kind::User)), ["gql", "cookied-json"]);
 	}
 
 	#[test]

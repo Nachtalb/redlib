@@ -65,7 +65,7 @@ Assign a default value for each instance-specific setting by passing environment
 | `ENDPOINTS`, `ENDPOINTS_<KIND>` | List      | per kind                               | Which backends load Reddit data, in which order. See [Backend order](#backend-order). |
 | `SCRAPE_COMMENT_PREFETCH` | Integer         | `0`                                    | Extra requests a scraped post page makes to load more comments up front. See [Scrape fallback](#scrape-fallback). |
 | `GQL_FEED_REQUESTS`       | Integer         | `2`                                    | Requests the `gql` backend makes to fill one r/all page. Reddit sends only about 8 posts for the first. |
-| `REDDIT_COOKIE`           | String          | (empty)                                | Logged-in `reddit_session` cookies, `|`-separated, for the `cookied-json` and `obscura-cookied-json` backends. Use throwaway accounts. See [Reddit session](#reddit-session). |
+| `REDDIT_COOKIE`           | String          | (empty)                                | Logged-in `reddit_session` cookies, `|`-separated, for the `cookied-json` backend. Use throwaway accounts. See [Reddit session](#reddit-session). |
 | `REDDIT_COOKIE_FILE`      | String          | (empty)                                | File with more sessions, one per line, reread while running. See [Reddit session](#reddit-session). |
 | `STALE_CACHE_MB`          | Integer         | `32`                                   | RAM for the last good copy of each page, served while Reddit refuses or fails. `0` turns it off. See [Stale cache](#stale-cache). |
 | `STALE_CACHE_MAX_AGE`     | Integer         | `360`                                  | Minutes a copy stays usable for the stale cache. |
@@ -99,8 +99,6 @@ With Docker, mount the file read-only, e.g. `-v ./sessions.txt:/sessions.txt:ro`
 
 **Use a throwaway account**, never your main one: the instance's traffic runs through it and Reddit may ban it. Keep the value secret. Pressing "Log out" on reddit.com ends the session.
 
-The `ghcr.io/nachtalb/redlib:latest-obscura` image (amd64 only, or `cargo build --release --features obscura`) can also send a session's requests through the embedded [Obscura](https://github.com/h4ckf0r0day/obscura) headless browser: the `obscura-cookied-json` backend. `latest` and default builds don't have it.
-
 ### Stale cache
 
 Pages are cached for 30 seconds as before. Besides that, Redlib keeps the last good copy of each Reddit response in RAM, zstd-compressed, least recently used dropped first once `REDLIB_STALE_CACHE_MB` is full. A copy is only used when every backend fails because Reddit blocks, rate limits, errors or doesn't answer; the page then shows a bar saying how old it is. Real answers like a deleted post or a private subreddit are never covered up. Nothing is written to disk, so a restart empties it.
@@ -126,19 +124,19 @@ REDLIB_ENDPOINTS_COMMENTS="cookied-json,gql,scraped"
 
 While running, Redlib reorders the listed backends by how often each worked in the last half hour or so, counting session backends as twice as expensive (they use up the account's request budget). Your order is where it starts after a restart, and where a backend drifts back to once its failures are old, so a blocked backend gets tried again later. `/info` shows the current order and each backend's score.
 
-`json` is Reddit's API without an account, `cookied-json` the same with a session from `REDLIB_REDDIT_COOKIE`, `gql` Reddit's GraphQL API (what the Android app uses), `scraped` comments from the HTML Reddit serves logged-out visitors, and `obscura-cookied-json` a session through Obscura (`latest-obscura` only).
+`json` is Reddit's API without an account, `cookied-json` the same with a session from `REDLIB_REDDIT_COOKIE`, `gql` Reddit's GraphQL API (what the Android app uses), and `scraped` comments from the HTML Reddit serves logged-out visitors.
 
-| `<KIND>`     | `json`     | `cookied-json` | `gql` | `scraped` | `obscura-cookied-json` | Default order |
-| ------------ | ---------- | -------------- | ----- | --------- | ---------------------- | ------------- |
-| `POST`       | ✅         | ✅             | ✅    | ❌        | ✅                     | gql, json, cookied-json, obscura-cookied-json |
-| `COMMENTS`   | ⚠️ blocked | ✅             | ✅    | ✅        | ✅                     | gql, cookied-json, obscura-cookied-json, scraped, json |
-| `LISTING`    | ✅         | ✅             | ⚠️¹   | ❌        | ✅                     | json, gql, cookied-json, obscura-cookied-json |
-| `ALL`        | ✅²        | ✅²            | ⚠️³   | ❌        | ✅²                    | json, gql, cookied-json, obscura-cookied-json |
-| `SUBREDDIT`  | ✅         | ✅             | ✅    | ❌        | ✅                     | gql, json, cookied-json, obscura-cookied-json |
-| `USER`       | ⚠️ blocked | ✅             | ✅    | ❌        | ✅                     | gql, cookied-json, obscura-cookied-json |
-| `SEARCH`     | ✅         | ✅             | ✅    | ❌        | ✅                     | gql, json, cookied-json, obscura-cookied-json |
-| `WIKI`       | ✅         | ✅             | ❌    | ❌        | ✅                     | json, cookied-json, obscura-cookied-json |
-| `DUPLICATES` | ✅         | ✅             | ❌    | ❌        | ✅                     | json, cookied-json, obscura-cookied-json |
+| `<KIND>`     | `json`     | `cookied-json` | `gql` | `scraped` | Default order |
+| ------------ | ---------- | -------------- | ----- | --------- | ------------- |
+| `POST`       | ✅         | ✅             | ✅    | ❌        | gql, json, cookied-json |
+| `COMMENTS`   | ⚠️ blocked | ✅             | ✅    | ✅        | gql, cookied-json, scraped, json |
+| `LISTING`    | ✅         | ✅             | ⚠️¹   | ❌        | json, gql, cookied-json |
+| `ALL`        | ✅²        | ✅²            | ⚠️³   | ❌        | json, gql, cookied-json |
+| `SUBREDDIT`  | ✅         | ✅             | ✅    | ❌        | gql, json, cookied-json |
+| `USER`       | ⚠️ blocked | ✅             | ✅    | ❌        | gql, cookied-json |
+| `SEARCH`     | ✅         | ✅             | ✅    | ❌        | gql, json, cookied-json |
+| `WIKI`       | ✅         | ✅             | ❌    | ❌        | json, cookied-json |
+| `DUPLICATES` | ✅         | ✅             | ❌    | ❌        | json, cookied-json |
 
 ¹ Skipped without a request for feeds of several subreddits (`r/a+b`, the front page of your subscriptions).
 
@@ -180,7 +178,7 @@ Assign a default value for each user-modifiable setting by passing environment v
 
 ## Forward proxies
 
-Redlib's HTTP client, [wreq](https://docs.rs/wreq/latest/wreq/#proxies), uses the standard proxy variables, so all Reddit traffic can go through a proxy. Set `ALL_PROXY` for everything, or `HTTP_PROXY` / `HTTPS_PROXY` per scheme, and `NO_PROXY` for hosts to reach directly. The Obscura build's browser uses them too.
+Redlib's HTTP client, [wreq](https://docs.rs/wreq/latest/wreq/#proxies), uses the standard proxy variables, so all Reddit traffic can go through a proxy. Set `ALL_PROXY` for everything, or `HTTP_PROXY` / `HTTPS_PROXY` per scheme, and `NO_PROXY` for hosts to reach directly.
 
 ```bash
 ALL_PROXY=socks5h://user:pass@proxy.example:1080 redlib
