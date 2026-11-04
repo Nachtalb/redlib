@@ -573,27 +573,31 @@ async fn subreddit(sub: &str, quarantined: bool) -> Result<Subreddit, String> {
 
 	// Send a request to the url
 	let res = json(path, quarantined).await?;
+	Ok(subreddit_from(&res))
+}
 
-	// Metadata regarding the subreddit
-	let members: i64 = res["data"]["subscribers"].as_u64().unwrap_or_default() as i64;
-	let active: i64 = res["data"]["accounts_active"].as_u64().unwrap_or_default() as i64;
+/// A subreddit from its `about.json`.
+fn subreddit_from(res: &serde_json::Value) -> Subreddit {
+	// Reddit sends big counts as floats, e.g. `31604051.0` for r/news
+	let members = res["data"]["subscribers"].as_f64().unwrap_or_default() as i64;
+	let active = res["data"]["accounts_active"].as_f64().unwrap_or_default() as i64;
 
 	// Fetch subreddit icon either from the community_icon or icon_img value
 	let community_icon: &str = res["data"]["community_icon"].as_str().unwrap_or_default();
-	let icon = if community_icon.is_empty() { val(&res, "icon_img") } else { community_icon.to_string() };
+	let icon = if community_icon.is_empty() { val(res, "icon_img") } else { community_icon.to_string() };
 
-	Ok(Subreddit {
-		name: val(&res, "display_name"),
-		title: val(&res, "title"),
-		description: val(&res, "public_description"),
-		info: rewrite_urls(&val(&res, "description_html")),
+	Subreddit {
+		name: val(res, "display_name"),
+		title: val(res, "title"),
+		description: val(res, "public_description"),
+		info: rewrite_urls(&val(res, "description_html")),
 		// moderators: moderators_list(sub, quarantined).await.unwrap_or_default(),
 		icon: format_url(&icon),
 		members: format_num(members),
 		active: format_num(active),
 		wiki: res["data"]["wiki_enabled"].as_bool().unwrap_or_default(),
 		nsfw: res["data"]["over18"].as_bool().unwrap_or_default(),
-	})
+	}
 }
 
 /// Feed for a subreddit, multireddit or the front page, built from the JSON API.
@@ -671,6 +675,14 @@ mod tests {
 		assert_eq!(wiki_html(&missing, "rules"), "<h3>Wiki page not found</h3>");
 		let page = serde_json::json!({ "data": { "content_html": "<p>hi</p>" } });
 		assert_eq!(wiki_html(&page, "index"), "<p>hi</p>");
+	}
+
+	#[test]
+	fn test_member_count_sent_as_float() {
+		let about = serde_json::json!({ "data": { "display_name": "news", "subscribers": 31604051.0 } });
+		assert_eq!(subreddit_from(&about).members, format_num(31604051));
+		let about = serde_json::json!({ "data": { "display_name": "rust", "subscribers": 429352 } });
+		assert_eq!(subreddit_from(&about).members, format_num(429352));
 	}
 
 	#[test]
