@@ -97,7 +97,11 @@
                             </div>
                         {% endif %}
                         <div id="sub_meta">
-                            <img loading="lazy" id="sub_icon" src="{{ sub.icon }}" alt="Icon for r/{{ sub.name }}">
+                            {% if sub.icon.is_empty() %}
+                                <div id="sub_icon" class="default_sub_icon" role="img" aria-label="Icon for r/{{ sub.name }}">r/</div>
+                            {% else %}
+                                <img loading="lazy" id="sub_icon" src="{{ sub.icon }}" alt="Icon for r/{{ sub.name }}">
+                            {% endif %}
                             <h1 id="sub_title">{{ sub.title }}</h1>
                             <p id="sub_name">r/{{ sub.name }}</p>
                             <p id="sub_description">{{ sub.description }}</p>
