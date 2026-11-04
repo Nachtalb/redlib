@@ -253,7 +253,11 @@ impl Config {
 			// Return the first non-`None` value
 			// If all are `None`, return `None`
 			let legacy_key = key.replace("REDLIB_", "LIBREDDIT_");
-			var(key).ok().or_else(|| var(legacy_key).ok()).or_else(|| get_setting_from_config(key, &config))
+			var(key)
+				.ok()
+				.or_else(|| var(legacy_key).ok())
+				.or_else(|| get_setting_from_config(key, &config))
+				.map(|value| normalize_case(key, value))
 		};
 		Self {
 			sfw_only: parse("REDLIB_SFW_ONLY"),
@@ -312,6 +316,24 @@ impl Config {
 			endpoints_wiki: parse("REDLIB_ENDPOINTS_WIKI"),
 			endpoints_duplicates: parse("REDLIB_ENDPOINTS_DUPLICATES"),
 		}
+	}
+}
+
+/// Switches, choices and backend lists are compared in lowercase and geo
+/// filters in uppercase, so `ON` or `Card` would otherwise silently fall back.
+/// So is the Pushshift frontend's host. Free text, names, URLs and sessions
+/// stay as written.
+fn normalize_case(key: &str, value: String) -> String {
+	match key {
+		"REDLIB_DEFAULT_GEO_FILTER" => value.to_ascii_uppercase(),
+		"REDLIB_DEFAULT_SUBSCRIPTIONS" | "REDLIB_DEFAULT_FILTERS" => value,
+		"REDLIB_PUSHSHIFT_FRONTEND" => match value.split_once('/') {
+			Some((host, path)) => format!("{}/{path}", host.to_ascii_lowercase()),
+			None => value.to_ascii_lowercase(),
+		},
+		"REDLIB_SFW_ONLY" | "REDLIB_ROBOTS_DISABLE_INDEXING" | "REDLIB_IPV4_ONLY" | "REDLIB_IPV6_ONLY" | "REDLIB_HSTS" => value.to_ascii_lowercase(),
+		_ if key.starts_with("REDLIB_DEFAULT_") || key.starts_with("REDLIB_ENABLE_") || key.starts_with("REDLIB_ENDPOINTS") => value.to_ascii_lowercase(),
+		_ => value,
 	}
 }
 
