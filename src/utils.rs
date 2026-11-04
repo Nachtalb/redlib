@@ -579,6 +579,8 @@ pub struct ErrorTemplate {
 	pub reddit_url: String,
 	/// Show instance hosts how to get past Reddit's block.
 	pub blocked: bool,
+	/// Subreddits of a combined feed Reddit blocked, linked one by one.
+	pub subreddits: Vec<String>,
 	pub prefs: Preferences,
 	pub url: String,
 }
@@ -1587,6 +1589,16 @@ pub async fn error(req: Request<Body>, msg: &str) -> Result<Response<Body>, Stri
 	// "Title: detail | /reddit/path"
 	let (text, path) = msg.split_once(" | ").unwrap_or((msg, ""));
 	let (title, detail) = text.split_once(": ").unwrap_or((text, ""));
+	let blocked = crate::backends::is_blocked_error(msg);
+	let subreddits = if blocked { combined_feed_subreddits(path) } else { Vec::new() };
+	let (title, detail) = if subreddits.is_empty() {
+		(title, detail)
+	} else {
+		(
+			"Reddit blocked this combined feed (403)",
+			"Feeds that combine several subreddits, like your front page or r/a+b, can only be loaded through Reddit's JSON API, and Reddit refuses that API to this instance. Single subreddits still work, so you can open them one by one.",
+		)
+	};
 	let body = ErrorTemplate {
 		msg: title.to_string(),
 		detail: detail.to_string(),
@@ -1595,7 +1607,8 @@ pub async fn error(req: Request<Body>, msg: &str) -> Result<Response<Body>, Stri
 		} else {
 			path.to_string()
 		},
-		blocked: crate::backends::is_blocked_error(msg),
+		blocked,
+		subreddits,
 		prefs: Preferences::new(&req),
 		url,
 	}
@@ -1603,6 +1616,18 @@ pub async fn error(req: Request<Body>, msg: &str) -> Result<Response<Body>, Stri
 	.unwrap_or_default();
 
 	Ok(Response::builder().status(404).header("content-type", "text/html").body(body.into()).unwrap_or_default())
+}
+
+/// The subreddits of a combined feed (`/r/a+b/...`), empty for a single one.
+/// r/all is fetched as `/r/all+`, which leaves a single name.
+fn combined_feed_subreddits(path: &str) -> Vec<String> {
+	let Some(rest) = path.strip_prefix("/r/") else { return Vec::new() };
+	let names = rest.split(['/', '?', '.']).next().unwrap_or_default().replace("%2B", "+").replace("%2b", "+");
+	let subs: Vec<String> = names.split('+').filter(|s| !s.is_empty()).map(str::to_string).collect();
+	if subs.len() < 2 {
+		return Vec::new();
+	}
+	subs
 }
 
 /// Renders a generic info landing page.
@@ -2014,6 +2039,18 @@ fn get_mime_type(url: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn test_combined_feed_subreddits() {
+		assert_eq!(
+			super::combined_feed_subreddits("/r/news%2Bworldnews%2Bu_spez/new.json?&raw_json=1"),
+			["news", "worldnews", "u_spez"]
+		);
+		assert_eq!(super::combined_feed_subreddits("/r/rust+linux/hot.json"), ["rust", "linux"]);
+		assert!(super::combined_feed_subreddits("/r/news/hot.json").is_empty());
+		assert!(super::combined_feed_subreddits("/r/all+/hot.json").is_empty());
+		assert!(super::combined_feed_subreddits("/comments/abc.json").is_empty());
+	}
+
 	use super::{deflate_compress, deflate_decompress, format_num, format_url, render_bullet_lists, rewrite_emotes, rewrite_urls, url_path_basename, Post, Preferences};
 	use super::{page_feed_url, prefix_relative_urls, Media};
 	use serde_json::{json, Value};

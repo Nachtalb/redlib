@@ -2195,6 +2195,14 @@ th {
     white-space: pre-wrap;
     word-break: break-all;
 }
+#error .error_subreddits {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 14px;
+}
 #error .error_links {
     opacity: 0.85;
 }

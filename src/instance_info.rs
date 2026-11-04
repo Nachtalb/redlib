@@ -41,6 +41,7 @@ pub async fn instance_info(req: Request<Body>) -> Result<Response<Body>, String>
 				detail: String::new(),
 				reddit_url: String::new(),
 				blocked: false,
+				subreddits: Vec::new(),
 				prefs: Preferences::new(&req),
 				url: req.uri().to_string(),
 			}
