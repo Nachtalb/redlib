@@ -1,11 +1,13 @@
 //! Reddit's web host with the logged-in sessions from `REDLIB_REDDIT_COOKIE`.
 
 use super::{check_json, Backend, Failure, Fetch, Kind};
-use crate::client::{reroll_client, session_cookies, IntoHyperResponse, ALTERNATIVE_REDDIT_URL_BASE, CLIENT};
+use crate::client::{now_secs, reroll_client, session_cookies, IntoHyperResponse, ALTERNATIVE_REDDIT_URL_BASE, CLIENT};
 use bytes::Buf;
 use log::{trace, warn};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{LazyLock, Mutex};
 use wreq::{header as wreq_header, Response as WreqResponse};
 
 pub struct CookiedJson;
@@ -85,6 +87,42 @@ async fn web_session_get(path: &str, sessions: &[(String, String)]) -> Option<Wr
 	None
 }
 
+/// How long a session rests after a response with `status` and Reddit's
+/// `x-ratelimit-remaining` / `x-ratelimit-reset` headers: until the window
+/// resets once it's used up, so its next requests go to the other sessions
+/// instead of being refused one by one.
+#[cfg_attr(not(test), allow(dead_code))]
+fn rest_secs(_status: u16, _remaining: Option<f64>, _reset: Option<f64>) -> Option<u64> {
+	None
+}
+
+/// Sessions resting after using up their budget, with when they may go again.
+#[cfg_attr(not(test), allow(dead_code))]
+static RESTING: LazyLock<Mutex<HashMap<String, u64>>> = LazyLock::new(Default::default);
+
+/// `sessions` without the ones resting at `now`.
+#[cfg_attr(not(test), allow(dead_code))]
+fn awake(sessions: Vec<(String, String)>, _now: u64) -> Vec<(String, String)> {
+	sessions
+}
+
+/// Sends `cookie` to rest when `response` says its budget is used up.
+#[allow(dead_code)]
+fn note_budget(label: &str, cookie: &str, response: &WreqResponse) {
+	let header = |name: &str| response.headers().get(name).and_then(|v| v.to_str().ok()?.parse::<f64>().ok());
+	if let Some(secs) = rest_secs(response.status().as_u16(), header("x-ratelimit-remaining"), header("x-ratelimit-reset")) {
+		warn!("Session {label} used up its request budget, resting it for {secs}s");
+		let now = now_secs();
+		send_to_rest(cookie, now + secs, now);
+	}
+}
+
+/// Rests `cookie` until `until`, forgetting the rests that are over at `now`.
+#[cfg_attr(not(test), allow(dead_code))]
+fn send_to_rest(cookie: &str, until: u64, _now: u64) {
+	RESTING.lock().unwrap_or_else(|e| e.into_inner()).insert(cookie.to_string(), until);
+}
+
 /// Fetches `path` from Reddit's web host as the logged-in session `cookie`.
 ///
 /// Only the cookie is overridden: the client's browser emulation already sends
@@ -101,6 +139,7 @@ async fn reddit_web_get(path: &str, cookie: &str) -> Result<WreqResponse, String
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use sealed_test::prelude::*;
 
 	#[test]
 	fn test_listing_and_search_refusals_keep_the_fingerprint() {
@@ -108,5 +147,62 @@ mod tests {
 		assert!(!blames_fingerprint("/search.json?q=rust&raw_json=1"));
 		assert!(blames_fingerprint("/r/rust/comments/abc123.json?raw_json=1"));
 		assert!(blames_fingerprint("/user/spez/about.json?raw_json=1"));
+	}
+
+	fn session(name: &str) -> (String, String) {
+		(format!("#{name}"), format!("reddit_session={name}"))
+	}
+
+	fn rest(name: &str, until: u64) {
+		RESTING.lock().unwrap_or_else(|e| e.into_inner()).insert(session(name).1, until);
+	}
+
+	#[test]
+	fn test_resting_sessions_are_skipped_until_their_rest_ends() {
+		rest("tired", 100);
+		let sessions = vec![session("tired"), session("fresh")];
+		assert_eq!(awake(sessions.clone(), 99), [session("fresh")]);
+		assert_eq!(awake(sessions.clone(), 100), sessions);
+	}
+
+	/// A rate limit that doesn't tell visitors the instance has sessions.
+	fn plain_rate_limit(failure: &Failure) -> bool {
+		matches!(failure, Failure::RateLimited(msg) if !msg.to_lowercase().contains("session"))
+	}
+
+	#[test]
+	#[sealed_test(env = [("REDLIB_REDDIT_COOKIE", "reddit_session=a|reddit_session=b")])]
+	fn test_every_session_resting_is_a_rate_limit_without_a_request() {
+		rest("a", u64::MAX);
+		rest("b", u64::MAX);
+		let result = crate::client::block_on_shared(fetch("/r/rust/hot.json?raw_json=1"));
+		assert!(result.as_ref().is_err_and(plain_rate_limit), "{result:?}");
+	}
+
+	#[test]
+	fn test_finished_rests_are_forgotten() {
+		// sessions removed from the session file mustn't stay in memory
+		send_to_rest("reddit_session=gone", 10, 0);
+		send_to_rest("reddit_session=new", 100, 20);
+		let resting = RESTING.lock().unwrap_or_else(|e| e.into_inner()).clone();
+		assert!(!resting.contains_key("reddit_session=gone"));
+		assert_eq!(resting.get("reddit_session=new"), Some(&100));
+	}
+
+	#[test]
+	fn test_used_up_session_rests_until_the_window_resets() {
+		assert_eq!(rest_secs(200, Some(0.0), Some(120.0)), Some(120));
+		assert_eq!(rest_secs(429, None, Some(30.0)), Some(30));
+		// no reset header: a minute
+		assert_eq!(rest_secs(429, None, None), Some(60));
+		// never longer than Reddit's ten minute window
+		assert_eq!(rest_secs(429, Some(0.0), Some(5000.0)), Some(600));
+	}
+
+	#[test]
+	fn test_session_with_requests_left_keeps_working() {
+		assert_eq!(rest_secs(200, Some(42.0), Some(120.0)), None);
+		assert_eq!(rest_secs(200, None, None), None);
+		assert_eq!(rest_secs(403, Some(10.0), Some(120.0)), None);
 	}
 }
