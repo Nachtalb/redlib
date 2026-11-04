@@ -86,8 +86,8 @@ const REFUSED: u32 = 1;
 /// How long a fingerprint Reddit blocked at runtime is left out of the draw.
 const BLOCK_SECS: u64 = 6 * 60 * 60;
 
-/// Reddit blocks anonymous JSON for Chrome 132+, Edge 135+ and Firefox 135+
-/// (probe, October 2026). No OkHttp: Reddit blocks most of it outright.
+/// Reddit blocks anonymous JSON for Chrome 132+, Edge 135+ (probe, October
+/// 2026) and every Firefox (probe, November 2026). No OkHttp: Reddit blocks most of it outright.
 const EMULATIONS: &[(Profile, &[Platform], u32)] = {
 	use Platform::*;
 	use Profile::*;
@@ -118,9 +118,9 @@ const EMULATIONS: &[(Profile, &[Platform], u32)] = {
 		(Firefox148, &[Windows, MacOS, Linux, Android], REFUSED),
 		(Firefox147, &[Windows, MacOS, Linux, Android], REFUSED),
 		// wreq-util has no macOS user agent for these two
-		(Firefox133, &[Windows, Linux, Android], SERVED),
-		(Firefox128, &[Windows, Linux], SERVED),
-		(FirefoxAndroid135, &[Android], SERVED),
+		(Firefox133, &[Windows, Linux, Android], REFUSED),
+		(Firefox128, &[Windows, Linux], REFUSED),
+		(FirefoxAndroid135, &[Android], REFUSED),
 		(Safari26_4, &[MacOS], SERVED),
 		(Safari26_3, &[MacOS], SERVED),
 		(Safari26_2, &[MacOS], SERVED),
@@ -158,7 +158,6 @@ const TEST_EMULATIONS: &[(Profile, &[Platform], u32)] = {
 	&[
 		(Chrome131, &[Windows, Android], SERVED),
 		(Edge134, &[Windows], SERVED),
-		(Firefox133, &[Linux], SERVED),
 		(Safari26_4, &[MacOS], SERVED),
 		(Safari18_5, &[MacOS], SERVED),
 		(SafariIos26_2, &[IOS], SERVED),
@@ -1056,13 +1055,56 @@ mod tests {
 		("ok".into(), json, gql)
 	}
 
+	/// What Reddit's web host answers `path` with the session `cookie`, as `cookied-json` asks.
+	/// Waits out one 429 before giving up on it.
+	async fn probe_session(client: &WreqClient, cookie: &str, path: &str) -> String {
+		for attempt in 0..2 {
+			let res = match client.get(format!("{ALTERNATIVE_REDDIT_URL_BASE}{path}")).header(wreq_header::COOKIE, cookie).send().await {
+				Ok(res) => res,
+				Err(e) => return format!("failed: {e}"),
+			};
+			let status = res.status().as_u16();
+			if status == 429 && attempt == 0 {
+				let reset = res.headers().get("x-ratelimit-reset").and_then(|v| v.to_str().ok()?.parse::<f64>().ok());
+				tokio::time::sleep(std::time::Duration::from_secs_f64(reset.unwrap_or(60.0).min(600.0) + 1.0)).await;
+				continue;
+			}
+			let content_type = res.headers().get(wreq_header::CONTENT_TYPE).map(|v| v.as_bytes().to_vec());
+			let body = res.bytes().await.unwrap_or_default();
+			tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+			return if is_fingerprint_block(status, content_type.as_deref(), &body) {
+				"blocked".to_string()
+			} else if status == 200 && serde_json::from_slice::<serde_json::Value>(&body).is_ok() {
+				"ok".to_string()
+			} else {
+				format!("{status}")
+			};
+		}
+		"429".to_string()
+	}
+
 	/// Fails when a fingerprint the tests use is blocked.
 	#[test]
 	#[ignore = "live: probes every fingerprint, run with --ignored"]
 	fn test_probe_fingerprints() {
 		use std::fmt::Write;
 		let tested: Vec<(String, String)> = flatten(TEST_EMULATIONS).iter().map(|f| (format!("{:?}", f.profile), format!("{:?}", f.platform))).collect();
-		let mut table = String::from("| profile | platform | weight | token | json | gql | tests |\n|---|---|---|---|---|---|---|\n");
+		let session = session_cookies().into_iter().next();
+		let legend = format!(
+			"Columns:\n\
+			- weight: how often prod picks it (served = normal, refused = rarely)\n\
+			- token: anonymous app token from `oauth.reddit.com` (Android app login)\n\
+			- json: anonymous `{REDDIT_URL_BASE}/r/rust/hot.json` with that token (`json` backend)\n\
+			- gql: anonymous GraphQL `SubredditInfoByName` (`gql` backend)\n\
+			- s-list, s-post: `{ALTERNATIVE_REDDIT_URL_BASE}` `/r/rust/hot.json` and a post's `.json` with session {} (`cookied-json` backend)\n\
+			- s-sub, s-user: same with `/r/rust/about.json` and `/user/spez/about.json`, only for fingerprints the tests use\n\
+			- tests: in `TEST_EMULATIONS`, the fingerprints the test suite draws from\n\n\
+			Values: ok = the expected JSON; blocked = Reddit's \"blocked by network security\" page; a number = that HTTP status without the expected JSON; failed = no answer; - = not probed\n",
+			session.as_ref().map_or("(none set, not probed)".to_string(), |(label, _)| label.clone()),
+		);
+		let header = "| profile | platform | weight | token | json | gql | s-list | s-post | s-sub | s-user | tests |\n|---|---|---|---|---|---|---|---|---|---|---|\n";
+		println!("{legend}\n{header}");
+		let mut table = String::from(header);
 		let mut broken = Vec::new();
 		let mut surprises = Vec::new();
 		block_on_shared(async {
@@ -1071,7 +1113,20 @@ mod tests {
 				let (token, json, gql) = probe(fingerprint.profile, fingerprint.platform).await;
 				let weight = if fingerprint.weight == SERVED { "served" } else { "refused" };
 				let in_tests = tested.contains(&(profile.clone(), platform.clone()));
-				let row = format!("| {profile} | {platform} | {weight} | {token} | {json} | {gql} | {} |", if in_tests { "yes" } else { "" });
+				let [mut list, mut post, mut sub, mut user] = ["-".to_string(), "-".to_string(), "-".to_string(), "-".to_string()];
+				if let Some((_, cookie)) = &session {
+					let client = client_for(fingerprint.profile, fingerprint.platform);
+					list = probe_session(&client, cookie, "/r/rust/hot.json?raw_json=1&limit=1").await;
+					post = probe_session(&client, cookie, "/r/redditdev/comments/1wubcvf.json?raw_json=1&limit=1").await;
+					if in_tests {
+						sub = probe_session(&client, cookie, "/r/rust/about.json?raw_json=1").await;
+						user = probe_session(&client, cookie, "/user/spez/about.json?raw_json=1").await;
+					}
+				}
+				let row = format!(
+					"| {profile} | {platform} | {weight} | {token} | {json} | {gql} | {list} | {post} | {sub} | {user} | {} |",
+					if in_tests { "yes" } else { "" }
+				);
 				println!("{row}");
 				writeln!(table, "{row}").unwrap();
 				if in_tests && json != "ok" {
@@ -1083,7 +1138,7 @@ mod tests {
 				}
 			}
 		});
-		let mut summary = format!("## Fingerprints\n\n{table}\n");
+		let mut summary = format!("## Fingerprints\n\n{legend}\n{table}\n");
 		if !surprises.is_empty() {
 			writeln!(summary, "Weight doesn't match the answer: {}\n", surprises.join(", ")).unwrap();
 		}
