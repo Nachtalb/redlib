@@ -195,12 +195,3 @@ fn test_cookied_json() {
 		core_paths(&CookiedJson);
 	}
 }
-
-#[cfg(feature = "obscura")]
-#[test]
-fn test_obscura_cookied_json() {
-	use super::obscura::ObscuraCookiedJson;
-	if has_session(&ObscuraCookiedJson) {
-		core_paths(&ObscuraCookiedJson);
-	}
-}

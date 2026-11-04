@@ -9,7 +9,7 @@ This fork is based on [redlib-org/redlib](https://github.com/redlib-org/redlib) 
 | Registry | `quay.io/redlib/redlib` | `ghcr.io/nachtalb/redlib` (forks publish to `ghcr.io/<owner>/<repo>`) |
 | Platforms | `linux/amd64`, `linux/arm64`, `linux/arm/v7` | `linux/amd64`, `linux/386`, `linux/arm64`, `linux/arm/v7`, `linux/arm/v6` |
 | Base | Alpine | Distroless `static:nonroot`: static musl binary, no shell or package manager, runs as uid 65532, ~16 MB |
-| Tags | `latest` | `latest` (from `main`) and `sha-<short commit>`, plus `latest-obscura` and `sha-<short commit>-obscura` (amd64 only, ~76 MB) with the Obscura browser embedded |
+| Tags | `latest` | `latest` (from `main`) and `sha-<short commit>` |
 | Health check | Docker `HEALTHCHECK` with `wget /settings` | `GET /healthz` for the orchestrator to probe (the image has no `wget`) |
 | Binaries | Tarballs on versioned releases | The image's static binaries for all five platforms on the [`latest` release](https://github.com/Nachtalb/redlib/releases/latest), refreshed on every push to `main` ([#44](https://github.com/Nachtalb/redlib/issues/44)) |
 
@@ -59,7 +59,7 @@ Bugs present in upstream Redlib that are fixed here:
 - **Big subreddits showed 0 members**: Reddit sends large counts as floats (`31604051.0` for r/news). "Active", which Reddit now always reports as 0, is replaced by the weekly visitors and contributions new Reddit shows.
 - **Generic subreddit icon**: subreddits without an icon get Reddit's "r/" icon, in the subreddit info and in search results, instead of an empty circle or nothing.
 - **Settings written in another case, like `REDLIB_ENABLE_RSS=ON` or `REDLIB_DEFAULT_LAYOUT=Card`, were ignored** while `/info` showed them as set. Switches, choices, backend lists, the geo filter and the Pushshift frontend's host are now read in any case; free text, subreddit names, URLs and sessions stay as written.
-- **`seccomp-redlib.json` stopped the container from starting**: current runc needs syscalls the profile blocked, and without `recvmsg` DNS lookups failed so Redlib never started listening. The profile now covers both images on amd64, including the Obscura browser.
+- **`seccomp-redlib.json` stopped the container from starting**: current runc needs syscalls the profile blocked, and without `recvmsg` DNS lookups failed so Redlib never started listening. The profile now covers the image on amd64.
 
 ## Features
 
@@ -99,9 +99,8 @@ From [polak14](https://github.com/polak14) ([`a63460b`](https://github.com/polak
 Own features:
 
 - **More pages from GraphQL**: the same fallback also covers posts by ID, subreddit/popular/all listings, search, subreddit info and sidebar, and user pages (a user's overview is one merged page of posts and comments).
-- **Backend order**: every Reddit request tries a list of backends (anonymous JSON, session JSON, GraphQL, scraping, Obscura) in an order set per kind of request with `REDLIB_ENDPOINTS_<KIND>`. By default GraphQL goes first except for listings, wiki and duplicates. While running, backends that keep failing move down and ones that work move up; `/info` shows the current order and each backend's score, with how it is calculated. See [Backend order](CONFIGURATION.md#backend-order).
+- **Backend order**: every Reddit request tries a list of backends (anonymous JSON, session JSON, GraphQL, scraping) in an order set per kind of request with `REDLIB_ENDPOINTS_<KIND>`. By default GraphQL goes first except for listings, wiki and duplicates. While running, backends that keep failing move down and ones that work move up; `/info` shows the current order and each backend's score, with how it is calculated. See [Backend order](CONFIGURATION.md#backend-order).
 - **Several Reddit sessions**: `REDLIB_REDDIT_COOKIE` takes several cookies separated by `|`. Blocked requests use them in turn, and a refused session hands the request to the next.
-- **Requests through a headless browser**: the `obscura-cookied-json` backend fetches Reddit's JSON from `www.reddit.com` with a session through the embedded [Obscura](https://github.com/h4ckf0r0day/obscura) browser in stealth mode. It is in the `latest-obscura` image (amd64 only) and in builds with `--features obscura`; `latest` and default builds don't have it.
 - **The block message doesn't reveal whether a session is set**: visitors see the same 403 text either way, telling the instance host to set or renew `REDLIB_REDDIT_COOKIE`.
 - **Blocked combined feeds say why**: feeds that combine subreddits (the front page, `r/a+b`) only load through Reddit's JSON API, since GraphQL has no combined feed. When Reddit blocks that, the error page says so and links each subreddit, which still load one by one ([#118](https://github.com/Nachtalb/redlib/issues/118)).
 - **Scraped comments load on demand**: a scraped post page shows Reddit's first batch of comments. "More comments" and "More replies" open a page with the next batch, one request to Reddit per click, with a link back to all comments. `REDLIB_SCRAPE_COMMENT_PREFETCH` loads more up front.
@@ -138,7 +137,7 @@ Own features:
 | `REDLIB_ENDPOINTS`, `REDLIB_ENDPOINTS_<KIND>` | per kind | Which backends load Reddit data, in which order. |
 | `REDLIB_SCRAPE_COMMENT_PREFETCH` | `0` | Extra requests a scraped post page makes to load more comments up front. `0` loads them only when asked. |
 | `REDLIB_GQL_FEED_REQUESTS` | `2` | Requests the `gql` backend makes to fill one r/all page. Reddit sends only about 8 posts for the first. At least `1`. |
-| `REDLIB_REDDIT_COOKIE` | (empty) | `Cookie` header of a logged-in reddit.com session, several separated by `\|`, for the `cookied-json` and `obscura-cookied-json` backends. **Secret.** |
+| `REDLIB_REDDIT_COOKIE` | (empty) | `Cookie` header of a logged-in reddit.com session, several separated by `\|`, for the `cookied-json` backend. **Secret.** |
 | `REDLIB_SOURCE_URL` | `https://github.com/Nachtalb/redlib` | Source code link in the footer, and the GitHub repository whose `main` branch the update check on error pages compares against. |
 | `REDLIB_LISTEN_PORT`, `REDLIB_LISTEN_ADDRESS`, `REDLIB_HSTS`, `REDLIB_IPV4_ONLY`, `REDLIB_IPV6_ONLY` | `8080`, `[::]`, `604800`, `off`, `off` | The listener options, so they also work in `redlib.toml`. The flags and `PORT`/`IPV4_ONLY`/`IPV6_ONLY` take precedence. Not `REDLIB_PORT`: Kubernetes sets that to `tcp://…` for a Service named `redlib`. |
 
@@ -211,10 +210,10 @@ Upgraded in the hope of reducing Reddit's TLS/SSL and fingerprinting errors (rat
 - Formatting is enforced with pre-commit and a Lint workflow: `cargo fmt`, [djhtml](https://github.com/rtts/djhtml) for templates, Prettier for CSS and JS, plus whitespace and line-ending checks. Run `pre-commit install` once.
 - `.editorconfig`: tabs for Rust, 4 spaces for templates, CSS and JS, 2 spaces for YAML and JSON.
 - CI builds each platform in its own job, with the Cargo registry and `target/` cached between runs.
-- A Tests workflow runs `cargo test` on every pull request and push to `main`, including the tests that need reddit.com. Those share one runtime (`client::block_on_shared`), because `CLIENT`'s pooled connections die with the runtime that opened them. Only `test_generic_web_backend` is `#[ignore]`d, because `www.reddit.com` answers GitHub's runners with 403; run it with `cargo test -- --include-ignored`. The tests only emulate a fixed list of browsers Reddit serves anonymous `oauth.reddit.com` JSON to, so they don't depend on the draw. `backends::live_tests` calls each backend directly (every GraphQL query, the session backends) so one can't break unnoticed behind another; the session backends use a throwaway account's `REDLIB_REDDIT_COOKIE` from a repository secret and skip without it, and Obscura's test runs in its own job with `--features obscura`.
+- A Tests workflow runs `cargo test` on every pull request and push to `main`, including the tests that need reddit.com. Those share one runtime (`client::block_on_shared`), because `CLIENT`'s pooled connections die with the runtime that opened them. Only `test_generic_web_backend` is `#[ignore]`d, because `www.reddit.com` answers GitHub's runners with 403; run it with `cargo test -- --include-ignored`. The tests only emulate a fixed list of browsers Reddit serves anonymous `oauth.reddit.com` JSON to, so they don't depend on the draw. `backends::live_tests` calls each backend directly (every GraphQL query, the session backends) so one can't break unnoticed behind another; the session backends use a throwaway account's `REDLIB_REDDIT_COOKIE` from a repository secret and skip without it.
 - A manual Fingerprints workflow asks Reddit about every browser the client can emulate, writes the table to the run summary, and fails when the tests' list has one Reddit blocks.
 - A new push cancels the Lint, Tests and Container build runs still going for the same branch.
 - CI only runs when files it checks change: a commit that touches only Markdown runs Lint but no Tests or Container build.
 - Dependabot opens weekly update PRs for crates, GitHub Actions and pre-commit hooks, grouped into one PR each.
-- Every place Reddit data comes from (anonymous JSON, session JSON, GraphQL, scraping, Obscura) is one file in `src/backends/` implementing the `Backend` trait; one loop tries them in turn.
+- Every place Reddit data comes from (anonymous JSON, session JSON, GraphQL, scraping) is one file in `src/backends/` implementing the `Backend` trait; one loop tries them in turn.
 - The Docker build context is an allowlist (`.dockerignore`); the commit hash comes in as the `GIT_HASH` build argument.

@@ -268,7 +268,6 @@ Redlib is configured with environment variables, a `redlib.toml` file or command
 ```bash
 git clone https://github.com/Nachtalb/redlib && cd redlib
 cargo build --release              # the binary ends up in target/release/redlib
-cargo build --release --features obscura  # with the Obscura browser (amd64 and arm64 hosts only)
 ```
 
 Redlib talks to Reddit through [wreq](https://github.com/0x676e67/wreq), which uses [BoringSSL](https://boringssl.googlesource.com/boringssl/) with wreq's patches (via the [`btls-sys`](https://crates.io/crates/btls-sys) crate) so its TLS handshake looks like a real browser's. The BoringSSL source ships with the crate and is patched and compiled during the build, so you need `git`, `cmake`, a C/C++ compiler and `libclang` (for bindgen). Certificates are checked against Mozilla's trust store compiled into the binary.
