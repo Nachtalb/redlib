@@ -42,7 +42,10 @@ static NEXT_SESSION: AtomicUsize = AtomicUsize::new(0);
 /// emulation, so switch to another one and try once more.
 async fn fetch(path: &str) -> Result<Value, Failure> {
 	let path = &*Kind::json_path(path);
-	let sessions = session_cookies();
+	let sessions = awake(session_cookies(), now_secs());
+	if sessions.is_empty() {
+		return Err(Failure::RateLimited("Reddit rate limit exceeded".into()));
+	}
 	let mut response = web_session_get(path, &sessions).await;
 	if response.is_none() && blames_fingerprint(path) && reroll_client("Reddit refused every session") {
 		response = web_session_get(path, &sessions).await;
@@ -75,7 +78,11 @@ async fn web_session_get(path: &str, sessions: &[(String, String)]) -> Option<Wr
 	let start = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
 	for i in 0..sessions.len() {
 		let (label, cookie) = &sessions[(start + i) % sessions.len()];
-		match reddit_web_get(path, cookie).await {
+		let response = reddit_web_get(path, cookie).await;
+		if let Ok(web_response) = &response {
+			note_budget(label, cookie, web_response);
+		}
+		match response {
 			Ok(web_response) if web_response.status().is_success() => {
 				trace!("Retried {path} with session {label}: status {}", web_response.status());
 				return Some(web_response);
@@ -91,23 +98,21 @@ async fn web_session_get(path: &str, sessions: &[(String, String)]) -> Option<Wr
 /// `x-ratelimit-remaining` / `x-ratelimit-reset` headers: until the window
 /// resets once it's used up, so its next requests go to the other sessions
 /// instead of being refused one by one.
-#[cfg_attr(not(test), allow(dead_code))]
-fn rest_secs(_status: u16, _remaining: Option<f64>, _reset: Option<f64>) -> Option<u64> {
-	None
+fn rest_secs(status: u16, remaining: Option<f64>, reset: Option<f64>) -> Option<u64> {
+	let used_up = status == 429 || (status < 400 && remaining.is_some_and(|left| left < 1.0));
+	used_up.then(|| reset.unwrap_or(60.0).clamp(1.0, 600.0) as u64)
 }
 
 /// Sessions resting after using up their budget, with when they may go again.
-#[cfg_attr(not(test), allow(dead_code))]
 static RESTING: LazyLock<Mutex<HashMap<String, u64>>> = LazyLock::new(Default::default);
 
 /// `sessions` without the ones resting at `now`.
-#[cfg_attr(not(test), allow(dead_code))]
-fn awake(sessions: Vec<(String, String)>, _now: u64) -> Vec<(String, String)> {
-	sessions
+fn awake(sessions: Vec<(String, String)>, now: u64) -> Vec<(String, String)> {
+	let resting = RESTING.lock().unwrap_or_else(|e| e.into_inner());
+	sessions.into_iter().filter(|(_, cookie)| resting.get(cookie).is_none_or(|until| *until <= now)).collect()
 }
 
 /// Sends `cookie` to rest when `response` says its budget is used up.
-#[allow(dead_code)]
 fn note_budget(label: &str, cookie: &str, response: &WreqResponse) {
 	let header = |name: &str| response.headers().get(name).and_then(|v| v.to_str().ok()?.parse::<f64>().ok());
 	if let Some(secs) = rest_secs(response.status().as_u16(), header("x-ratelimit-remaining"), header("x-ratelimit-reset")) {
@@ -118,9 +123,10 @@ fn note_budget(label: &str, cookie: &str, response: &WreqResponse) {
 }
 
 /// Rests `cookie` until `until`, forgetting the rests that are over at `now`.
-#[cfg_attr(not(test), allow(dead_code))]
-fn send_to_rest(cookie: &str, until: u64, _now: u64) {
-	RESTING.lock().unwrap_or_else(|e| e.into_inner()).insert(cookie.to_string(), until);
+fn send_to_rest(cookie: &str, until: u64, now: u64) {
+	let mut resting = RESTING.lock().unwrap_or_else(|e| e.into_inner());
+	resting.retain(|_, until| *until > now);
+	resting.insert(cookie.to_string(), until);
 }
 
 /// Fetches `path` from Reddit's web host as the logged-in session `cookie`.
