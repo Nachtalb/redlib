@@ -72,6 +72,19 @@ fn blames_fingerprint(path: &str) -> bool {
 	!matches!(Kind::of(path), Kind::Listing | Kind::Search)
 }
 
+/// Whether a request no session answered is worth retrying with another
+/// browser: only when one was refused, not when they were all out of budget.
+#[cfg_attr(not(test), allow(dead_code))]
+fn worth_a_new_browser(path: &str, _refused: bool) -> bool {
+	blames_fingerprint(path)
+}
+
+/// What a request no session answered fails with.
+#[cfg_attr(not(test), allow(dead_code))]
+fn no_answer(_refused: bool) -> Failure {
+	Failure::Blocked
+}
+
 /// Tries `path` on Reddit's web host with each session in turn, starting at a
 /// rotating index, and returns the first successful response.
 async fn web_session_get(path: &str, sessions: &[(String, String)]) -> Option<WreqResponse> {
@@ -183,6 +196,21 @@ mod tests {
 		rest("b", u64::MAX);
 		let result = crate::client::block_on_shared(fetch("/r/rust/hot.json?raw_json=1"));
 		assert!(result.as_ref().is_err_and(plain_rate_limit), "{result:?}");
+	}
+
+	#[test]
+	fn test_sessions_out_of_budget_are_a_rate_limit_not_a_block() {
+		assert!(plain_rate_limit(&no_answer(false)));
+		assert!(matches!(no_answer(true), Failure::Blocked));
+	}
+
+	#[test]
+	fn test_only_refusals_switch_the_browser() {
+		let post = "/r/rust/comments/abc123.json?raw_json=1";
+		assert!(worth_a_new_browser(post, true));
+		// a rate limit is the session's budget, not the browser
+		assert!(!worth_a_new_browser(post, false));
+		assert!(!worth_a_new_browser("/r/rust/hot.json?raw_json=1", true));
 	}
 
 	#[test]
