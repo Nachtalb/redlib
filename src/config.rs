@@ -535,6 +535,33 @@ mod tests {
 	}
 
 	#[test]
+	#[sealed_test(env = [
+		("REDLIB_ENABLE_RSS", "ON"),
+		("REDLIB_DEFAULT_LAYOUT", "Card"),
+		("REDLIB_ENDPOINTS_LISTING", "Gql,JSON"),
+		("REDLIB_DEFAULT_GEO_FILTER", "global"),
+		("REDLIB_BANNER", "Hello World"),
+		("REDLIB_DEFAULT_SUBSCRIPTIONS", "Rust+Linux"),
+		("REDLIB_FULL_URL", "https://Example.com/Redlib"),
+		("REDLIB_PUSHSHIFT_FRONTEND", "Undelete.Example.com/Reddit"),
+	])]
+	fn test_options_in_any_case() {
+		write("redlib.toml", "REDLIB_SFW_ONLY = \"Off\"\nREDLIB_ROBOTS_DISABLE_INDEXING = \"On\"").unwrap();
+		assert!(crate::utils::enable_rss());
+		assert!(crate::utils::disable_indexing());
+		assert_eq!(get_setting("REDLIB_SFW_ONLY"), Some("off".into()));
+		assert_eq!(get_setting("REDLIB_DEFAULT_LAYOUT"), Some("card".into()));
+		assert_eq!(get_setting("REDLIB_ENDPOINTS_LISTING"), Some("gql,json".into()));
+		assert_eq!(get_setting("REDLIB_DEFAULT_GEO_FILTER"), Some("GLOBAL".into()));
+		// free text, names and URLs stay as written
+		assert_eq!(get_setting("REDLIB_BANNER"), Some("Hello World".into()));
+		assert_eq!(get_setting("REDLIB_DEFAULT_SUBSCRIPTIONS"), Some("Rust+Linux".into()));
+		assert_eq!(get_setting("REDLIB_FULL_URL"), Some("https://Example.com/Redlib".into()));
+		// only the host of the Pushshift frontend, its path may care
+		assert_eq!(get_setting("REDLIB_PUSHSHIFT_FRONTEND"), Some("undelete.example.com/Reddit".into()));
+	}
+
+	#[test]
 	#[sealed_test]
 	fn test_config() {
 		let config_to_write = r#"REDLIB_DEFAULT_COMMENT_SORT = "best""#;
