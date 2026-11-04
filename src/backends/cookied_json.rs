@@ -39,18 +39,17 @@ static NEXT_SESSION: AtomicUsize = AtomicUsize::new(0);
 
 /// Sessions take turns; a refused one passes the request on to the next.
 /// When every session is refused, Reddit may have flagged the browser
-/// emulation, so switch to another one and try once more.
+/// emulation, so switch to another one and try once more with the sessions
+/// that still have budget.
 async fn fetch(path: &str) -> Result<Value, Failure> {
 	let path = &*Kind::json_path(path);
-	let sessions = awake(session_cookies(), now_secs());
-	if sessions.is_empty() {
-		return Err(Failure::RateLimited("Reddit rate limit exceeded".into()));
+	let mut response = web_session_get(path).await;
+	if let Err(refused) = response {
+		if worth_a_new_browser(path, refused) && reroll_client("Reddit refused every session") {
+			response = web_session_get(path).await;
+		}
 	}
-	let mut response = web_session_get(path, &sessions).await;
-	if response.is_none() && blames_fingerprint(path) && reroll_client("Reddit refused every session") {
-		response = web_session_get(path, &sessions).await;
-	}
-	let response = response.ok_or(Failure::Blocked)?;
+	let response = response.map_err(no_answer)?;
 
 	let body = response
 		.into_hyper_response()
@@ -74,21 +73,26 @@ fn blames_fingerprint(path: &str) -> bool {
 
 /// Whether a request no session answered is worth retrying with another
 /// browser: only when one was refused, not when they were all out of budget.
-#[cfg_attr(not(test), allow(dead_code))]
-fn worth_a_new_browser(path: &str, _refused: bool) -> bool {
-	blames_fingerprint(path)
+fn worth_a_new_browser(path: &str, refused: bool) -> bool {
+	refused && blames_fingerprint(path)
 }
 
 /// What a request no session answered fails with.
-#[cfg_attr(not(test), allow(dead_code))]
-fn no_answer(_refused: bool) -> Failure {
-	Failure::Blocked
+fn no_answer(refused: bool) -> Failure {
+	if refused {
+		Failure::Blocked
+	} else {
+		Failure::RateLimited("Reddit rate limit exceeded".into())
+	}
 }
 
-/// Tries `path` on Reddit's web host with each session in turn, starting at a
-/// rotating index, and returns the first successful response.
-async fn web_session_get(path: &str, sessions: &[(String, String)]) -> Option<WreqResponse> {
+/// Tries `path` on Reddit's web host with each session that has budget, in
+/// turn from a rotating index, and returns the first successful response, or
+/// whether any session was refused for another reason than its budget.
+async fn web_session_get(path: &str) -> Result<WreqResponse, bool> {
+	let sessions = awake(session_cookies(), now_secs());
 	let start = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+	let mut refused = false;
 	for i in 0..sessions.len() {
 		let (label, cookie) = &sessions[(start + i) % sessions.len()];
 		let response = reddit_web_get(path, cookie).await;
@@ -98,13 +102,19 @@ async fn web_session_get(path: &str, sessions: &[(String, String)]) -> Option<Wr
 		match response {
 			Ok(web_response) if web_response.status().is_success() => {
 				trace!("Retried {path} with session {label}: status {}", web_response.status());
-				return Some(web_response);
+				return Ok(web_response);
 			}
-			Ok(web_response) => warn!("Session {label} was refused for {path}: status {}", web_response.status()),
-			Err(e) => warn!("Couldn't reach Reddit's web host for {path}: {e}"),
+			Ok(web_response) => {
+				refused |= web_response.status() != wreq::StatusCode::TOO_MANY_REQUESTS;
+				warn!("Session {label} was refused for {path}: status {}", web_response.status());
+			}
+			Err(e) => {
+				refused = true;
+				warn!("Couldn't reach Reddit's web host for {path}: {e}");
+			}
 		}
 	}
-	None
+	Err(refused)
 }
 
 /// How long a session rests after a response with `status` and Reddit's
