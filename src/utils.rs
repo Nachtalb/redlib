@@ -955,9 +955,16 @@ pub async fn parse_post(post: &Value) -> Post {
 
 	let poll = Poll::parse(&post["data"]["poll_data"]);
 
-	let body = if val(post, "removed_by_category") == "moderator" {
+	let gone = if val(post, "removed_by_category") == "moderator" {
+		Some("removed")
+	} else if val(post, "author") == "[deleted]" && val(post, "selftext") == "[deleted]" {
+		Some("deleted")
+	} else {
+		None
+	};
+	let body = if let Some(state) = gone {
 		format!(
-			"<div class=\"md\"><p>[removed] — <a href=\"https://{}{permalink}\">view removed post</a></p></div>",
+			"<div class=\"md\"><p>[{state}] — <a href=\"https://{}{permalink}\">view {state} post</a></p></div>",
 			get_setting("REDLIB_PUSHSHIFT_FRONTEND").unwrap_or_else(|| String::from(crate::config::DEFAULT_PUSHSHIFT_FRONTEND)),
 		)
 	} else {
@@ -1522,6 +1529,9 @@ pub fn format_num(num: i64) -> (String, String) {
 
 /// Parse a relative and absolute time from a UNIX timestamp
 pub fn time(created: f64) -> (String, String) {
+	if created == 0.0 {
+		return (String::new(), String::new());
+	}
 	let time = OffsetDateTime::from_unix_timestamp(created.round() as i64).unwrap_or(OffsetDateTime::UNIX_EPOCH);
 	let now = OffsetDateTime::now_utc();
 	let min = time.min(now);
@@ -2040,6 +2050,12 @@ fn get_mime_type(url: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
 	#[test]
+	fn test_time_unknown_is_empty() {
+		// A missing timestamp parses as 0; show nothing instead of Jan 01 1970
+		assert_eq!(super::time(0.0), (String::new(), String::new()));
+	}
+
+	#[test]
 	fn test_combined_feed_subreddits() {
 		assert_eq!(
 			super::combined_feed_subreddits("/r/news%2Bworldnews%2Bu_spez/new.json?&raw_json=1"),
@@ -2240,6 +2256,19 @@ mod tests {
 			r#"<p><a href="https://preview.redd.it/6awags382xo31.png?width=2560&amp;format=png&amp;auto=webp&amp;s=9c563aed4f07a91bdd249b5a3cea43a79710dcfc">caption 1</a></p>"#;
 		let output = r#"<figure><a href="/preview/pre/6awags382xo31.png?width=2560&amp;format=png&amp;auto=webp&amp;s=9c563aed4f07a91bdd249b5a3cea43a79710dcfc"><img loading="lazy" src="/preview/pre/6awags382xo31.png?width=2560&amp;format=png&amp;auto=webp&amp;s=9c563aed4f07a91bdd249b5a3cea43a79710dcfc"></a><figcaption>caption 1</figcaption></figure>"#;
 		assert_eq!(rewrite_urls(input), output);
+	}
+
+	#[tokio::test]
+	async fn test_deleted_post_links_pushshift() {
+		let post = serde_json::json!({ "kind": "t3", "data": {
+			"id": "abc", "title": "t", "author": "[deleted]", "subreddit": "rust", "permalink": "/r/rust/comments/abc/t/",
+			"is_self": true, "selftext": "[deleted]", "selftext_html": "<div class=\"md\"><p>[deleted]</p></div>",
+		}});
+		let body = super::parse_post(&post).await.body;
+		assert!(
+			body.contains("[deleted] — <a href=\"https://undelete.pullpush.io/r/rust/comments/abc/t/\">view deleted post</a>"),
+			"{body}"
+		);
 	}
 
 	#[tokio::test]
