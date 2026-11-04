@@ -86,8 +86,8 @@ const REFUSED: u32 = 1;
 /// How long a fingerprint Reddit blocked at runtime is left out of the draw.
 const BLOCK_SECS: u64 = 6 * 60 * 60;
 
-/// Reddit blocks anonymous JSON for Chrome 132+, Edge 135+ and Firefox 135+
-/// (probe, October 2026). No OkHttp: Reddit blocks most of it outright.
+/// Reddit blocks anonymous JSON for Chrome 132+, Edge 135+ (probe, October
+/// 2026) and every Firefox (probe, November 2026). No OkHttp: Reddit blocks most of it outright.
 const EMULATIONS: &[(Profile, &[Platform], u32)] = {
 	use Platform::*;
 	use Profile::*;
@@ -118,9 +118,9 @@ const EMULATIONS: &[(Profile, &[Platform], u32)] = {
 		(Firefox148, &[Windows, MacOS, Linux, Android], REFUSED),
 		(Firefox147, &[Windows, MacOS, Linux, Android], REFUSED),
 		// wreq-util has no macOS user agent for these two
-		(Firefox133, &[Windows, Linux, Android], SERVED),
-		(Firefox128, &[Windows, Linux], SERVED),
-		(FirefoxAndroid135, &[Android], SERVED),
+		(Firefox133, &[Windows, Linux, Android], REFUSED),
+		(Firefox128, &[Windows, Linux], REFUSED),
+		(FirefoxAndroid135, &[Android], REFUSED),
 		(Safari26_4, &[MacOS], SERVED),
 		(Safari26_3, &[MacOS], SERVED),
 		(Safari26_2, &[MacOS], SERVED),
