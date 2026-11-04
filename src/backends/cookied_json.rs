@@ -42,7 +42,7 @@ async fn fetch(path: &str) -> Result<Value, Failure> {
 	let path = &*Kind::json_path(path);
 	let sessions = session_cookies();
 	let mut response = web_session_get(path, &sessions).await;
-	if response.is_none() && reroll_client("Reddit refused every session") {
+	if response.is_none() && blames_fingerprint(path) && reroll_client("Reddit refused every session") {
 		response = web_session_get(path, &sessions).await;
 	}
 	let response = response.ok_or(Failure::Blocked)?;
@@ -59,6 +59,12 @@ async fn fetch(path: &str) -> Result<Value, Failure> {
 		Ok(json) => check_json(json, path).await,
 		Err(_) => Err(Failure::Blocked),
 	}
+}
+
+/// Subreddit listings and search are refused to sessions on every fingerprint
+/// (probe, November 2026), so switching away from a working one can't help.
+fn blames_fingerprint(path: &str) -> bool {
+	!matches!(Kind::of(path), Kind::Listing | Kind::Search)
 }
 
 /// Tries `path` on Reddit's web host with each session in turn, starting at a
@@ -90,4 +96,17 @@ async fn reddit_web_get(path: &str, cookie: &str) -> Result<WreqResponse, String
 	let url = format!("{ALTERNATIVE_REDDIT_URL_BASE}{path}");
 
 	CLIENT.load_full().get(&url).header(wreq_header::COOKIE, cookie).send().await.map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_listing_and_search_refusals_keep_the_fingerprint() {
+		assert!(!blames_fingerprint("/r/rust/hot.json?raw_json=1"));
+		assert!(!blames_fingerprint("/search.json?q=rust&raw_json=1"));
+		assert!(blames_fingerprint("/r/rust/comments/abc123.json?raw_json=1"));
+		assert!(blames_fingerprint("/user/spez/about.json?raw_json=1"));
+	}
 }
