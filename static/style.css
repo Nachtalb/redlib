@@ -516,6 +516,24 @@ aside {
     margin: 10px;
 }
 
+/* Reddit's generic "r/" icon for subreddits without their own */
+.default_sub_icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 100%;
+    background: var(--highlighted);
+    background-clip: content-box;
+    color: var(--text);
+    font-weight: bold;
+}
+
+#sub_icon.default_sub_icon {
+    box-sizing: content-box;
+    font-size: 40px;
+}
+
 #user_title,
 #sub_title {
     font-size: 20px;
@@ -1139,10 +1157,15 @@ main > * > footer > a {
     margin-right: 10px;
 }
 
-.search_subreddit_left img {
+.search_subreddit_left img,
+.search_subreddit_left .default_sub_icon {
     width: 35px;
     height: 35px;
     border-radius: 100%;
+}
+
+.search_subreddit_left .default_sub_icon {
+    font-size: 14px;
 }
 
 .search_subreddit_right {
