@@ -149,11 +149,93 @@
                                 {% endif %}
                             </div>
                         </details>
-                        {% if !sub.info.is_empty() %}
+                        {% if !sub.widgets.is_empty() || !sub.info.is_empty() %}
                             <details class="panel" id="sidebar">
                                 <summary id="sidebar_label">Sidebar</summary>
                                 <div id="sidebar_contents">
-                                    {{ sub.info|safe }}
+                                    {% if sub.widgets.is_empty() %}
+                                        {{ sub.info|safe }}
+                                    {% endif %}
+                                    {% for widget in sub.widgets %}
+                                        {% if widget.title().is_empty() %}
+                                            <div class="widget">
+                                        {% else %}
+                                            <details class="widget"{% if widget.starts_open() %} open{% endif %}>
+                                                <summary class="widget_title">{{ widget.title() }}</summary>
+                                        {% endif %}
+                                        {% match widget %}
+                                        {% when Widget::Text with { html, .. } %}
+                                            {{ html|safe }}
+                                        {% when Widget::Rules with { rules, .. } %}
+                                            {% for (name, description) in rules %}
+                                                {% if description.is_empty() %}
+                                                    <div class="widget_rule widget_rule_plain">{{ loop.index }}. {{ name }}</div>
+                                                {% else %}
+                                                    <details class="widget_rule">
+                                                        <summary>{{ loop.index }}. {{ name }}</summary>
+                                                        {{ description|safe }}
+                                                    </details>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% when Widget::Communities with { communities, more, .. } %}
+                                            <ul class="widget_communities">
+                                                {% for community in communities %}
+                                                    <li>
+                                                        <a href="{{ community.url }}">
+                                                            {% if community.icon.is_empty() %}<span class="default_sub_icon" aria-hidden="true">r/</span>{% else %}<img loading="lazy" src="{{ community.icon }}" alt="">{% endif %}
+                                                            <span>r/{{ community.name }}</span>
+                                                        </a>
+                                                        <span class="widget_members" title="{{ community.subscribers.1 }} members">{{ community.subscribers.0 }}</span>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                            {% if !more.is_empty() %}
+                                                <details class="widget_more">
+                                                    <summary>Show {{ more.len() }} more</summary>
+                                                    <ul class="widget_communities">
+                                                        {% for community in more %}
+                                                            <li>
+                                                                <a href="{{ community.url }}">
+                                                                    {% if community.icon.is_empty() %}<span class="default_sub_icon" aria-hidden="true">r/</span>{% else %}<img loading="lazy" src="{{ community.icon }}" alt="">{% endif %}
+                                                                    <span>r/{{ community.name }}</span>
+                                                                </a>
+                                                                <span class="widget_members" title="{{ community.subscribers.1 }} members">{{ community.subscribers.0 }}</span>
+                                                            </li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                </details>
+                                            {% endif %}
+                                        {% when Widget::Image with { url, link, .. } %}
+                                            {% match link %}
+                                            {% when Some(link) %}<a href="{{ link }}"><img loading="lazy" class="widget_image" src="{{ url }}" alt=""></a>
+                                            {% when None %}<img loading="lazy" class="widget_image" src="{{ url }}" alt="">
+                                            {% endmatch %}
+                                        {% when Widget::Links with { links, .. } %}
+                                            <ul class="widget_links">
+                                                {% for link in links %}
+                                                    <li>
+                                                        {% if link.children.is_empty() %}
+                                                            <a href="{{ link.url }}">{{ link.text }}</a>
+                                                        {% else %}
+                                                            <details class="widget_submenu">
+                                                                <summary>{{ link.text }}</summary>
+                                                                <ul>
+                                                                    {% for (text, url) in link.children %}
+                                                                        <li><a href="{{ url }}">{{ text }}</a></li>
+                                                                    {% endfor %}
+                                                                </ul>
+                                                            </details>
+                                                        {% endif %}
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% endmatch %}
+                                        {% if widget.title().is_empty() %}
+                                            </div>
+                                        {% else %}
+                                            </details>
+                                        {% endif %}
+                                    {% endfor %}
 					{# <hr>
 					<h2>Moderators</h2>
 					<br>

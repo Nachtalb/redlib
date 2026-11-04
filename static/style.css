@@ -500,6 +500,135 @@ aside {
 #sidebar_contents {
     margin-top: 10px;
 }
+
+/* New Reddit's sidebar widgets: one box per widget, titled ones fold */
+/* full width even with every box closed: the panel centres its children,
+   which shrinks the contents to their widest title */
+#sidebar {
+    align-items: stretch;
+}
+
+#sidebar > summary {
+    text-align: center;
+}
+
+.widget + .widget {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--highlighted);
+}
+
+.widget_title {
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.widget[open] > .widget_title {
+    margin-bottom: 8px;
+}
+
+/* links red like everywhere else; the titles above are white */
+.widget a,
+.widget .md a,
+.widget .md a * {
+    color: var(--accent);
+}
+
+/* the marker hangs in the left padding, so long rules wrap under their text
+   and descriptions line up with it */
+.widget_rule {
+    padding: 8px 0 8px 1.2em;
+}
+
+.widget_rule > summary {
+    list-style-position: outside;
+}
+
+/* rules without a description get the same marker, unseen, so all rule
+   numbers line up */
+.widget_rule_plain {
+    display: list-item;
+    list-style: disclosure-closed outside;
+}
+
+.widget_rule_plain::marker {
+    color: transparent;
+}
+
+.widget_rule > .md {
+    margin-top: 6px;
+}
+
+.widget_links {
+    list-style: none;
+    padding: 0;
+}
+
+/* compact community rows: icon, name, members on the right */
+.widget_communities {
+    list-style: none;
+    padding: 0;
+}
+
+.widget_communities li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 3px 0;
+}
+
+.widget_communities a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.widget_communities img,
+.widget_communities .default_sub_icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 100%;
+    flex-shrink: 0;
+}
+
+.widget_communities .default_sub_icon {
+    font-size: 10px;
+}
+
+.widget_members {
+    color: var(--visited);
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.widget_more > summary {
+    padding: 4px 0;
+}
+
+/* link boxes: plain links, one per line */
+.widget_links > li {
+    padding: 3px 0;
+}
+
+.widget_submenu ul {
+    list-style: none;
+    padding: 4px 0 0 16px;
+}
+
+.widget_submenu li {
+    padding: 2px 0;
+}
+
+.widget_image {
+    max-width: 100%;
+    border-radius: 5px;
+}
 #sidebar_label,
 #subreddit_label {
     padding: 10px;

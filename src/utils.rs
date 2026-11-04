@@ -627,6 +627,55 @@ pub struct User {
 	pub nsfw: bool,
 }
 
+/// A box of the sidebar new Reddit shows, from `/r/<sub>/api/widgets`.
+pub enum Widget {
+	Text {
+		title: String,
+		html: String,
+	},
+	/// Rules as (title, description HTML).
+	Rules {
+		title: String,
+		rules: Vec<(String, String)>,
+	},
+	/// Long lists show the first few, the rest behind "Show N more".
+	Communities {
+		title: String,
+		communities: Vec<crate::search::Subreddit>,
+		more: Vec<crate::search::Subreddit>,
+	},
+	Image {
+		title: String,
+		url: String,
+		link: Option<String>,
+	},
+	/// A link menu or button box.
+	Links {
+		title: String,
+		links: Vec<Link>,
+	},
+}
+
+impl Widget {
+	pub fn title(&self) -> &str {
+		match self {
+			Self::Text { title, .. } | Self::Rules { title, .. } | Self::Communities { title, .. } | Self::Image { title, .. } | Self::Links { title, .. } => title,
+		}
+	}
+
+	/// Titled boxes start closed so the sidebar stays short, except the rules.
+	pub fn starts_open(&self) -> bool {
+		matches!(self, Self::Rules { .. })
+	}
+}
+
+/// A sidebar link, or a submenu of links when `url` is empty.
+pub struct Link {
+	pub text: String,
+	pub url: String,
+	pub children: Vec<(String, String)>,
+}
+
 #[derive(Default)]
 /// Subreddit struct containing metadata about community
 pub struct Subreddit {
@@ -643,6 +692,8 @@ pub struct Subreddit {
 	pub weekly_contributions: Option<(String, String)>,
 	pub wiki: bool,
 	pub nsfw: bool,
+	/// New Reddit's sidebar; `info` is the old one.
+	pub widgets: Vec<Widget>,
 }
 
 /// Parser for query params, used in sorting (eg. /r/rust/?sort=hot)

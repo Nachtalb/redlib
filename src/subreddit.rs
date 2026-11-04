@@ -3,7 +3,7 @@
 use crate::body::Body;
 use crate::utils::{
 	build_rss_items, catch_random, clean_url, enable_rss, error, filter_posts, format_num, format_url, get_filters, info, nsfw_landing, param, redirect, rewrite_urls,
-	rss_page_link, rss_page_path, rss_response, setting, setting_or_default, should_be_nsfw_gated, template, val, Post, Preferences, Subreddit, RSS_LISTING_SORTS,
+	rss_page_link, rss_page_path, rss_response, setting, setting_or_default, should_be_nsfw_gated, template, val, Link, Post, Preferences, Subreddit, Widget, RSS_LISTING_SORTS,
 };
 use crate::{backends::json, server::RequestExt, server::ResponseExt};
 use askama::Template;
@@ -101,8 +101,12 @@ pub async fn community(req: Request<Body>) -> Result<Response<Body>, String> {
 
 	// Request subreddit metadata
 	let sub = if !sub_name.contains('+') && sub_name != subscribed && sub_name != "popular" && sub_name != "all" {
-		// Regular subreddit
-		subreddit(&sub_name, quarantined).await.unwrap_or_default()
+		// Regular subreddit, with new Reddit's sidebar fetched alongside
+		let (sub, widgets) = tokio::join!(subreddit(&sub_name, quarantined), widgets(&sub_name, quarantined));
+		Subreddit {
+			widgets,
+			..sub.unwrap_or_default()
+		}
 	} else if sub_name == subscribed {
 		// Subscription feed
 		if req.uri().path().starts_with("/r/") {
@@ -566,6 +570,124 @@ pub async fn sidebar(req: Request<Body>) -> Result<Response<Body>, String> {
 // 	})
 // }
 
+/// Community lists longer than this fold the rest away.
+const FOLD_COMMUNITIES_AFTER: usize = 5;
+
+/// New Reddit's sidebar, empty when Reddit doesn't send one.
+async fn widgets(sub: &str, quarantined: bool) -> Vec<Widget> {
+	json(format!("/r/{sub}/api/widgets?raw_json=1"), quarantined)
+		.await
+		.map(|res| parse_widgets(&res))
+		.unwrap_or_default()
+}
+
+/// The sidebar widgets in the order Reddit lays them out. Kinds Redlib can't
+/// show (calendars, custom CSS, post flair) are left out.
+fn parse_widgets(res: &serde_json::Value) -> Vec<Widget> {
+	let text = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
+	let html = |v: &serde_json::Value| rewrite_urls(v.as_str().unwrap_or_default());
+	let items = &res["items"];
+	let order = res["layout"]["topbar"]["order"]
+		.as_array()
+		.into_iter()
+		.chain(res["layout"]["sidebar"]["order"].as_array())
+		.flatten();
+	order
+		.filter_map(|id| {
+			let widget = &items[id.as_str()?];
+			let title = text(&widget["shortName"]);
+			let data = widget["data"].as_array().map(Vec::as_slice).unwrap_or_default();
+			let widget = match widget["kind"].as_str()? {
+				"textarea" => Widget::Text {
+					title,
+					html: html(&widget["textHtml"]),
+				},
+				"subreddit-rules" => Widget::Rules {
+					title,
+					rules: data
+						.iter()
+						.map(|rule| {
+							let description = html(&rule["descriptionHtml"]);
+							(text(&rule["shortName"]), if has_text(&description) { description } else { String::new() })
+						})
+						.collect(),
+				},
+				"community-list" => {
+					let mut communities: Vec<crate::search::Subreddit> = data
+						.iter()
+						.map(|community| {
+							let icon = [&community["communityIcon"], &community["iconUrl"]]
+								.into_iter()
+								.find_map(|v| v.as_str().filter(|s| !s.is_empty()))
+								.unwrap_or_default();
+							let name = text(&community["name"]);
+							crate::search::Subreddit {
+								url: format!("/r/{name}"),
+								name,
+								icon: format_url(icon),
+								description: String::new(),
+								subscribers: format_num(community["subscribers"].as_f64().unwrap_or_default() as i64),
+							}
+						})
+						.collect();
+					// folding away a single row saves nothing
+					let more = if communities.len() > FOLD_COMMUNITIES_AFTER + 1 {
+						communities.split_off(FOLD_COMMUNITIES_AFTER)
+					} else {
+						Vec::new()
+					};
+					Widget::Communities { title, communities, more }
+				}
+				"image" => {
+					let image = data.last()?;
+					Widget::Image {
+						title,
+						url: format_url(image["url"].as_str()?),
+						link: image["linkUrl"].as_str().filter(|s| !s.is_empty()).map(format_url),
+					}
+				}
+				"menu" | "button" => {
+					// buttons keep theirs under `buttons`, menus under `data`
+					let entries = widget["buttons"].as_array().map(Vec::as_slice).unwrap_or(data);
+					let link = |v: &serde_json::Value| Some((text(&v["text"]), format_url(v["url"].as_str().filter(|u| !u.is_empty())?)));
+					let links: Vec<_> = entries
+						.iter()
+						.filter_map(|entry| {
+							let children: Vec<_> = entry["children"].as_array().into_iter().flatten().filter_map(link).collect();
+							let url = entry["url"].as_str().filter(|u| !u.is_empty()).map(format_url).unwrap_or_default();
+							(!url.is_empty() || !children.is_empty()).then(|| Link {
+								text: text(&entry["text"]),
+								url,
+								children,
+							})
+						})
+						.collect();
+					Widget::Links { title, links }
+				}
+				_ => return None,
+			};
+			Some(widget)
+		})
+		.filter(|widget| !matches!(widget, Widget::Links { links, .. } if links.is_empty()))
+		.collect()
+}
+
+/// Whether `html` shows any text, so `<div class="md"></div>` counts as empty.
+fn has_text(html: &str) -> bool {
+	let mut in_tag = false;
+	html.chars().any(|c| match c {
+		'<' => {
+			in_tag = true;
+			false
+		}
+		'>' => {
+			in_tag = false;
+			false
+		}
+		_ => !in_tag && !c.is_whitespace(),
+	})
+}
+
 // SUBREDDIT
 async fn subreddit(sub: &str, quarantined: bool) -> Result<Subreddit, String> {
 	// Build the Reddit JSON API url
@@ -598,6 +720,7 @@ fn subreddit_from(res: &serde_json::Value) -> Subreddit {
 		weekly_contributions: count("weekly_contributions"),
 		wiki: res["data"]["wiki_enabled"].as_bool().unwrap_or_default(),
 		nsfw: res["data"]["over18"].as_bool().unwrap_or_default(),
+		widgets: Vec::new(),
 	}
 }
 
@@ -693,6 +816,72 @@ mod tests {
 		assert_eq!((sub.weekly_visitors, sub.weekly_contributions), (Some(format_num(4088390)), Some(format_num(63142))));
 		let sub = subreddit_from(&serde_json::json!({ "data": { "accounts_active": 0 } }));
 		assert_eq!((sub.weekly_visitors, sub.weekly_contributions), (None, None));
+	}
+
+	/// Reddit's `/r/<sub>/api/widgets` answer, saved in `tests/fixtures`.
+	fn widgets_fixture(sub: &str) -> serde_json::Value {
+		serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/fixtures/widgets_{sub}.json", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap()
+	}
+
+	#[test]
+	fn test_widgets_r_news() {
+		let widgets = parse_widgets(&widgets_fixture("news"));
+		let kinds: Vec<&str> = widgets
+			.iter()
+			.map(|w| match w {
+				Widget::Text { .. } => "text",
+				Widget::Rules { .. } => "rules",
+				Widget::Communities { .. } => "communities",
+				Widget::Image { .. } => "image",
+				Widget::Links { .. } => "links",
+			})
+			.collect();
+		// the menu from the top bar first, then the sidebar in Reddit's order
+		assert_eq!(kinds, ["links", "rules", "communities", "text", "text"]);
+		let Widget::Rules { rules, .. } = &widgets[1] else { unreachable!() };
+		assert_eq!(rules[0].0, "Submissions must be articles about a specific news event");
+		let Widget::Communities { communities, more, .. } = &widgets[2] else { unreachable!() };
+		// 10 related communities: 5 shown, 5 behind "Show 5 more"
+		assert_eq!((communities.len(), more.len()), (5, 5));
+		assert!(widgets[1].starts_open() && !widgets[2].starts_open());
+		assert_eq!(communities[0].name, "worldnews");
+		assert_eq!(communities[0].subscribers, format_num(47691337));
+		assert_eq!(communities[0].url, "/r/worldnews");
+		assert!(communities[0].icon.starts_with("/style/"), "{}", communities[0].icon);
+		let Widget::Links { links, .. } = &widgets[0] else { unreachable!() };
+		assert_eq!((links[0].text.as_str(), links[0].url.as_str()), ("Rules", "/r/news/wiki/rules"));
+		assert!(parse_widgets(&serde_json::json!({})).is_empty());
+	}
+
+	#[test]
+	fn test_widgets_r_worldnews_menus_and_buttons() {
+		let widgets = parse_widgets(&widgets_fixture("worldnews"));
+		// the region menu: entries with only sub-links
+		let Widget::Links { links, .. } = &widgets[0] else { panic!("menu first") };
+		let africa = links.iter().find(|l| l.text == "Africa").expect("Africa submenu");
+		assert!(africa.url.is_empty());
+		assert!(
+			africa.children.contains(&("r/SouthAfrica".to_string(), "/r/SouthAfrica".to_string())),
+			"{:?}",
+			africa.children
+		);
+		// the "Info" button box
+		let info = widgets.iter().find_map(|w| match w {
+			Widget::Links { title, links } if title == "Info" => Some(links),
+			_ => None,
+		});
+		let info = info.expect("Info buttons");
+		assert_eq!(info[0].text, "Rules: Submissions");
+		assert_eq!(info[0].url, "/r/worldnews/wiki/rules#wiki_disallowed_submissions");
+		// a rule without a description has nothing to expand
+		let Widget::Rules { rules, .. } = widgets.iter().find(|w| matches!(w, Widget::Rules { .. })).unwrap() else {
+			unreachable!()
+		};
+		let (name, description) = rules.last().unwrap();
+		assert!(name.starts_with("No chatGPT bots"), "{name}");
+		assert!(description.is_empty());
+		assert!(!rules[0].1.is_empty());
+		assert!(!has_text("<!-- SC_OFF --><div class=\"md\">\n</div><!-- SC_ON -->"));
 	}
 
 	#[test]

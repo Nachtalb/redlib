@@ -83,12 +83,13 @@ fn tab(typed: &str) -> &'static Tab {
 }
 
 // STRUCTS
-struct Subreddit {
-	name: String,
-	url: String,
-	icon: String,
-	description: String,
-	subscribers: (String, String),
+/// A subreddit as a card: search results, the sidebar's community lists.
+pub struct Subreddit {
+	pub name: String,
+	pub url: String,
+	pub icon: String,
+	pub description: String,
+	pub subscribers: (String, String),
 }
 
 struct User {

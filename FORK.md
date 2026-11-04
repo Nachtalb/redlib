@@ -123,6 +123,7 @@ Own features:
   the Android app uses for its search tabs. "Show more" adds the next results
   below, or opens them as the next page without JavaScript
   ([#69](https://github.com/Nachtalb/redlib/issues/69)).
+- **New Reddit's sidebar**: subreddits show the widgets new Reddit shows (rules you can expand, related communities with their member counts, text boxes, images, link menus) instead of the old-reddit sidebar text mods often left stale. Each box folds on its title and only the rules start open, so big sidebars like r/europe stay short. Subreddits without widgets keep the old sidebar.
 
 ## Configuration
 
