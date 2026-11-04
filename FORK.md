@@ -56,6 +56,7 @@ Bugs present in upstream Redlib that are fixed here:
 - **RSS text was escaped or decoded wrongly**: subreddit feed titles showed `&amp;` for `&`, and user feeds turned escaped text like `Vec&lt;T&gt;` into markup that readers hid ([#16](https://github.com/Nachtalb/redlib/pull/16)).
 - **Shutdown cut off running downloads**: on SIGTERM or Ctrl+C, the server now finishes in-flight requests before exiting.
 - **One number or boolean in `redlib.toml` dropped the whole file** without a message, e.g. `REDLIB_SCRAPE_COMMENT_PREFETCH = 0`. Numbers are read as text and booleans as `on`/`off`, and a file that still can't be read is logged ([#46](https://github.com/Nachtalb/redlib/issues/46)).
+- **Settings written in another case, like `REDLIB_ENABLE_RSS=ON` or `REDLIB_DEFAULT_LAYOUT=Card`, were ignored** while `/info` showed them as set. Switches, choices, backend lists, the geo filter and the Pushshift frontend's host are now read in any case; free text, subreddit names, URLs and sessions stay as written.
 - **`seccomp-redlib.json` stopped the container from starting**: current runc needs syscalls the profile blocked, and without `recvmsg` DNS lookups failed so Redlib never started listening. The profile now covers both images on amd64, including the Obscura browser.
 
 ## Features

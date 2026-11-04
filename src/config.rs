@@ -253,7 +253,11 @@ impl Config {
 			// Return the first non-`None` value
 			// If all are `None`, return `None`
 			let legacy_key = key.replace("REDLIB_", "LIBREDDIT_");
-			var(key).ok().or_else(|| var(legacy_key).ok()).or_else(|| get_setting_from_config(key, &config))
+			var(key)
+				.ok()
+				.or_else(|| var(legacy_key).ok())
+				.or_else(|| get_setting_from_config(key, &config))
+				.map(|value| normalize_case(key, value))
 		};
 		Self {
 			sfw_only: parse("REDLIB_SFW_ONLY"),
@@ -312,6 +316,24 @@ impl Config {
 			endpoints_wiki: parse("REDLIB_ENDPOINTS_WIKI"),
 			endpoints_duplicates: parse("REDLIB_ENDPOINTS_DUPLICATES"),
 		}
+	}
+}
+
+/// Switches, choices and backend lists are compared in lowercase and geo
+/// filters in uppercase, so `ON` or `Card` would otherwise silently fall back.
+/// So is the Pushshift frontend's host. Free text, names, URLs and sessions
+/// stay as written.
+fn normalize_case(key: &str, value: String) -> String {
+	match key {
+		"REDLIB_DEFAULT_GEO_FILTER" => value.to_ascii_uppercase(),
+		"REDLIB_DEFAULT_SUBSCRIPTIONS" | "REDLIB_DEFAULT_FILTERS" => value,
+		"REDLIB_PUSHSHIFT_FRONTEND" => match value.split_once('/') {
+			Some((host, path)) => format!("{}/{path}", host.to_ascii_lowercase()),
+			None => value.to_ascii_lowercase(),
+		},
+		"REDLIB_SFW_ONLY" | "REDLIB_ROBOTS_DISABLE_INDEXING" | "REDLIB_IPV4_ONLY" | "REDLIB_IPV6_ONLY" | "REDLIB_HSTS" => value.to_ascii_lowercase(),
+		_ if key.starts_with("REDLIB_DEFAULT_") || key.starts_with("REDLIB_ENABLE_") || key.starts_with("REDLIB_ENDPOINTS") => value.to_ascii_lowercase(),
+		_ => value,
 	}
 }
 
@@ -532,6 +554,33 @@ mod tests {
 	#[sealed_test(env = [("REDLIB_SFW_ONLY", "on")])]
 	fn test_env_var() {
 		assert!(crate::utils::sfw_only())
+	}
+
+	#[test]
+	#[sealed_test(env = [
+		("REDLIB_ENABLE_RSS", "ON"),
+		("REDLIB_DEFAULT_LAYOUT", "Card"),
+		("REDLIB_ENDPOINTS_LISTING", "Gql,JSON"),
+		("REDLIB_DEFAULT_GEO_FILTER", "global"),
+		("REDLIB_BANNER", "Hello World"),
+		("REDLIB_DEFAULT_SUBSCRIPTIONS", "Rust+Linux"),
+		("REDLIB_FULL_URL", "https://Example.com/Redlib"),
+		("REDLIB_PUSHSHIFT_FRONTEND", "Undelete.Example.com/Reddit"),
+	])]
+	fn test_options_in_any_case() {
+		write("redlib.toml", "REDLIB_SFW_ONLY = \"Off\"\nREDLIB_ROBOTS_DISABLE_INDEXING = \"On\"").unwrap();
+		assert!(crate::utils::enable_rss());
+		assert!(crate::utils::disable_indexing());
+		assert_eq!(get_setting("REDLIB_SFW_ONLY"), Some("off".into()));
+		assert_eq!(get_setting("REDLIB_DEFAULT_LAYOUT"), Some("card".into()));
+		assert_eq!(get_setting("REDLIB_ENDPOINTS_LISTING"), Some("gql,json".into()));
+		assert_eq!(get_setting("REDLIB_DEFAULT_GEO_FILTER"), Some("GLOBAL".into()));
+		// free text, names and URLs stay as written
+		assert_eq!(get_setting("REDLIB_BANNER"), Some("Hello World".into()));
+		assert_eq!(get_setting("REDLIB_DEFAULT_SUBSCRIPTIONS"), Some("Rust+Linux".into()));
+		assert_eq!(get_setting("REDLIB_FULL_URL"), Some("https://Example.com/Redlib".into()));
+		// only the host of the Pushshift frontend, its path may care
+		assert_eq!(get_setting("REDLIB_PUSHSHIFT_FRONTEND"), Some("undelete.example.com/Reddit".into()));
 	}
 
 	#[test]
