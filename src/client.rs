@@ -606,6 +606,12 @@ pub(crate) fn reddit_get(path: String, quarantine: bool) -> Boxed<Result<WreqRes
 	request(&Method::GET, path, true, quarantine, REDDIT_URL_BASE, REDDIT_URL_BASE_HOST)
 }
 
+/// Session tokens leave out the anonymous device's `x-reddit-loid` and `x-reddit-session`.
+#[allow(dead_code)]
+fn oauth_headers(headers: std::collections::HashMap<String, String>, _token: Option<&str>) -> Vec<(String, String)> {
+	headers.into_iter().collect()
+}
+
 /// Makes a HEAD request to Reddit at `path, using the short URL base. This will not follow redirects.
 fn reddit_short_head(path: String, quarantine: bool, base_path: &'static str, host: &'static str) -> Boxed<Result<WreqResponse, String>> {
 	request(&Method::HEAD, path, false, quarantine, base_path, host)
@@ -742,6 +748,30 @@ impl IntoHyperResponse for WreqResponse {
 mod tests {
 	use super::*;
 	use {crate::config::get_setting, sealed_test::prelude::*};
+
+	#[test]
+	fn test_session_tokens_leave_the_anonymous_device_out() {
+		let anonymous = std::collections::HashMap::from([
+			("Authorization".to_string(), "Bearer anonymous".to_string()),
+			("x-reddit-loid".to_string(), "loid".to_string()),
+			("x-reddit-session".to_string(), "session".to_string()),
+			("User-Agent".to_string(), "Reddit/Version".to_string()),
+		]);
+		let mut session = oauth_headers(anonymous.clone(), Some("mine"));
+		session.sort();
+		assert_eq!(
+			session,
+			[
+				("Authorization".to_string(), "Bearer mine".to_string()),
+				("User-Agent".to_string(), "Reddit/Version".to_string())
+			]
+		);
+		let mut plain = oauth_headers(anonymous.clone(), None);
+		plain.sort();
+		let mut expected: Vec<_> = anonymous.into_iter().collect();
+		expected.sort();
+		assert_eq!(plain, expected);
+	}
 
 	#[test]
 	fn test_prefer_ipv4_keeps_ipv6_without_ipv4() {
