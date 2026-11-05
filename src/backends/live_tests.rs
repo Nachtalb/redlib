@@ -195,3 +195,10 @@ fn test_cookied_json() {
 		core_paths(&CookiedJson);
 	}
 }
+
+#[test]
+fn test_cookied_json_all() {
+	if has_session(&CookiedJson) {
+		assert_posts(&get(&CookiedJson, "/r/all/hot.json?raw_json=1"), "cookied-json all");
+	}
+}

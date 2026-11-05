@@ -74,6 +74,11 @@ fn reddit_error(status: u16, json: &Value, path: &str) -> Failure {
 	Failure::Final(format!("Reddit error {status} {reason}: {message} | {path}"))
 }
 
+#[allow(dead_code)]
+fn session_path(path: &str) -> std::borrow::Cow<'_, str> {
+	Kind::json_path(path)
+}
+
 fn is_json(response: &WreqResponse) -> bool {
 	response
 		.headers()
@@ -520,6 +525,13 @@ mod tests {
 			.insert("reddit_session=loop-notoken".into(), (None, u64::MAX));
 		let (_, calls) = ask("/r/rust/hot.json?raw_json=1", &["loop-notoken"], |_, _| answer(200, &[]));
 		assert_eq!(calls, [(Host::Web, "loop-notoken".into())]);
+	}
+
+	#[test]
+	fn test_sessions_get_r_all_with_an_encoded_plus() {
+		assert_eq!(session_path("/r/all/hot.json?raw_json=1"), "/r/all%2B/hot.json?raw_json=1");
+		assert_eq!(session_path("/r/all.json?raw_json=1"), "/r/all%2B.json?raw_json=1");
+		assert_eq!(session_path("/r/rust/hot.json?raw_json=1"), "/r/rust/hot.json?raw_json=1");
 	}
 
 	#[test]
