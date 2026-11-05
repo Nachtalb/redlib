@@ -478,9 +478,9 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clearurls"
-version = "0.0.4"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e291c00af89ac0a5b400d9ba46a682e38015ae3cd8926dbbe85b3b864d550be3"
+checksum = "2779c42fed298a00dd6b685befb66f400b3a32dae25c736c95dab6f98f551da2"
 dependencies = [
  "percent-encoding",
  "regex",
