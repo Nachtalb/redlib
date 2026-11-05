@@ -67,6 +67,21 @@ async fn fetch(path: &str) -> Result<Value, Failure> {
 	}
 }
 
+#[allow(dead_code)]
+fn reddit_error(_status: u16, _json: &Value, _path: &str) -> Failure {
+	Failure::Blocked
+}
+
+#[allow(dead_code)]
+fn unparsable(_status: u16) -> Failure {
+	Failure::Blocked
+}
+
+#[allow(dead_code)]
+fn is_answer(status: u16, _json: bool) -> bool {
+	(200..300).contains(&status)
+}
+
 /// Subreddit listings and search are refused to sessions on every fingerprint
 /// (probe, November 2026), so switching away from a working one can't help.
 fn blames_fingerprint(path: &str) -> bool {
@@ -493,6 +508,35 @@ mod tests {
 			.insert("reddit_session=loop-notoken".into(), (None, u64::MAX));
 		let (_, calls) = ask("/r/rust/hot.json?raw_json=1", &["loop-notoken"], |_, _| answer(200, &[]));
 		assert_eq!(calls, [(Host::Web, "loop-notoken".into())]);
+	}
+
+	#[test]
+	fn test_missing_page_is_an_answer_not_a_refusal() {
+		let (result, calls) = ask("/r/rust/wiki/index.json?raw_json=1", &["loop-404", "loop-c"], |_, _| answer(404, &[]));
+		assert_eq!(result, Ok(404));
+		assert_eq!(calls, [(Host::Web, "loop-404".into())]);
+		assert!(matches!(unparsable(404), Failure::Final(_)));
+		let missing = serde_json::json!({"reason": "PAGE_NOT_FOUND", "message": "Not Found"});
+		assert!(matches!(reddit_error(404, &missing, "/r/rust/wiki/index.json"), Failure::Final(msg) if msg.contains("PAGE_NOT_FOUND")));
+	}
+
+	#[test]
+	fn test_error_explained_in_json_is_an_answer_not_a_refusal() {
+		let (result, calls) = ask("/r/europa/wiki/index.json?raw_json=1", &["loop-wiki", "loop-d"], |_, _| {
+			answer(403, &[("content-type", "application/json; charset=UTF-8")])
+		});
+		assert_eq!(result, Ok(403));
+		assert_eq!(calls, [(Host::Web, "loop-wiki".into())]);
+		let (result, _) = ask("/r/rust/comments/abc.json?raw_json=1", &["loop-block"], |_, _| {
+			answer(403, &[("content-type", "text/html")])
+		});
+		assert_eq!(result, Err(true));
+		assert!(!is_answer(401, true));
+		assert!(!is_answer(429, true));
+		assert!(!is_answer(500, true));
+		let disabled = serde_json::json!({"reason": "WIKI_DISABLED", "message": "Forbidden"});
+		assert!(matches!(reddit_error(403, &disabled, "/r/europa/wiki/index.json"), Failure::Final(msg) if msg.contains("WIKI_DISABLED")));
+		assert!(matches!(unparsable(403), Failure::Blocked));
 	}
 
 	#[test]
