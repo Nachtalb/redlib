@@ -1,11 +1,13 @@
-//! Reddit's web host with the logged-in sessions from `REDLIB_REDDIT_COOKIE`.
+//! Reddit with the sessions from `REDLIB_REDDIT_COOKIE`, on the web host and the API.
 
 use super::{check_json, Backend, Failure, Fetch, Kind};
-use crate::client::{now_secs, reroll_client, session_cookies, IntoHyperResponse, ALTERNATIVE_REDDIT_URL_BASE, CLIENT};
+use crate::client::{now_secs, reddit_get_as, reroll_client, session_cookies, IntoHyperResponse, ALTERNATIVE_REDDIT_URL_BASE, CLIENT};
+use crate::oauth::session_token;
 use bytes::Buf;
 use log::{trace, warn};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 use wreq::{header as wreq_header, Response as WreqResponse};
@@ -42,7 +44,7 @@ static NEXT_SESSION: AtomicUsize = AtomicUsize::new(0);
 /// emulation, so switch to another one and try once more with the sessions
 /// that still have budget.
 async fn fetch(path: &str) -> Result<Value, Failure> {
-	let path = &*Kind::json_path(path);
+	let path = &*session_path(path);
 	let mut response = web_session_get(path).await;
 	if let Err(refused) = response {
 		if worth_a_new_browser(path, refused) && reroll_client("Reddit refused every session") {
@@ -50,6 +52,7 @@ async fn fetch(path: &str) -> Result<Value, Failure> {
 		}
 	}
 	let response = response.map_err(no_answer)?;
+	let status = response.status().as_u16();
 
 	let body = response
 		.into_hyper_response()
@@ -57,12 +60,46 @@ async fn fetch(path: &str) -> Result<Value, Failure> {
 		.collect_bytes()
 		.await
 		.map_err(|e| Failure::Network(format!("Failed receiving body from Reddit: {e} | {path}")))?;
-	// An empty or non-JSON body from the web host is a refusal, not the
-	// OAuth rate limit.
-	match serde_json::from_reader(body.reader()) {
+	match serde_json::from_reader::<_, Value>(body.reader()) {
+		Ok(json) if status >= 400 && json["error"].is_null() => Err(reddit_error(status, &json, path)),
 		Ok(json) => check_json(json, path).await,
-		Err(_) => Err(Failure::Blocked),
+		Err(_) => Err(unparsable(status)),
 	}
+}
+
+/// A JSON error without the `error` field `check_json` looks for, like `{"reason": "WIKI_DISABLED"}`.
+fn reddit_error(status: u16, json: &Value, path: &str) -> Failure {
+	let reason = json["reason"].as_str().unwrap_or("no reason");
+	let message = json["message"].as_str().unwrap_or_default();
+	Failure::Final(format!("Reddit error {status} {reason}: {message} | {path}"))
+}
+
+/// The API reads the bare `+` of `r/all+` as a space for a session's token; anonymous requests need it bare.
+fn session_path(path: &str) -> std::borrow::Cow<'_, str> {
+	match Kind::json_path(path) {
+		std::borrow::Cow::Owned(all) => all.replacen("/r/all+", "/r/all%2B", 1).into(),
+		same => same,
+	}
+}
+
+fn is_json(response: &WreqResponse) -> bool {
+	response
+		.headers()
+		.get(wreq_header::CONTENT_TYPE)
+		.is_some_and(|v| v.as_bytes().starts_with(b"application/json"))
+}
+
+fn unparsable(status: u16) -> Failure {
+	if status == 404 {
+		Failure::Final("Not found".into())
+	} else {
+		Failure::Blocked
+	}
+}
+
+/// Refusals are HTML block pages; a 401 or 429 is about the session, not the page.
+fn is_answer(status: u16, json: bool) -> bool {
+	(200..300).contains(&status) || status == 404 || (status == 403 && json)
 }
 
 /// Subreddit listings and search are refused to sessions on every fingerprint
@@ -86,35 +123,52 @@ fn no_answer(refused: bool) -> Failure {
 	}
 }
 
-/// Tries `path` on Reddit's web host with each session that has budget, in
-/// turn from a rotating index, and returns the first successful response, or
-/// whether any session was refused for another reason than its budget.
 async fn web_session_get(path: &str) -> Result<WreqResponse, bool> {
 	let sessions = awake(session_cookies(), now_secs());
 	let start = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+	try_sessions(path, &sessions, start, |host, cookie| async move { session_get(host, path, &cookie).await }).await
+}
+
+async fn try_sessions<G, F>(path: &str, sessions: &[(String, String)], start: usize, get: G) -> Result<WreqResponse, bool>
+where
+	G: Fn(Host, String) -> F,
+	F: Future<Output = Result<WreqResponse, String>>,
+{
 	let mut refused = false;
 	for i in 0..sessions.len() {
 		let (label, cookie) = &sessions[(start + i) % sessions.len()];
-		let response = reddit_web_get(path, cookie).await;
-		if let Ok(web_response) = &response {
-			note_budget(label, cookie, web_response);
-		}
-		match response {
-			Ok(web_response) if web_response.status().is_success() => {
-				trace!("Retried {path} with session {label}: status {}", web_response.status());
-				return Ok(web_response);
+		for host in hosts(path) {
+			if host == Host::Api && mint_failed_recently(cookie, now_secs()) {
+				continue;
 			}
-			Ok(web_response) => {
-				refused |= web_response.status() != wreq::StatusCode::TOO_MANY_REQUESTS;
-				warn!("Session {label} was refused for {path}: status {}", web_response.status());
+			match get(host, cookie.clone()).await {
+				Ok(response) if is_answer(response.status().as_u16(), is_json(&response)) => {
+					note_budget(label, cookie, &response);
+					trace!("Retried {path} with session {label} on {host:?}: status {}", response.status());
+					return Ok(response);
+				}
+				Ok(response) => {
+					note_budget(label, cookie, &response);
+					refused |= is_refusal(host, response.status().as_u16());
+					warn!("Session {label} was refused for {path} on {host:?}: status {}", response.status());
+				}
+				Err(e) => {
+					refused = true;
+					warn!("Couldn't get {path} with session {label} on {host:?}: {e}");
+				}
 			}
-			Err(e) => {
-				refused = true;
-				warn!("Couldn't reach Reddit's web host for {path}: {e}");
+			// the budget is the account's
+			if awake(vec![(label.clone(), cookie.clone())], now_secs()).is_empty() {
+				break;
 			}
 		}
 	}
 	Err(refused)
+}
+
+/// A used-up budget or an expired token isn't the browser emulation's fault.
+fn is_refusal(host: Host, status: u16) -> bool {
+	status != 429 && !(host == Host::Api && status == 401)
 }
 
 /// How long a session rests after a response with `status` and Reddit's
@@ -152,6 +206,39 @@ fn send_to_rest(cookie: &str, until: u64, now: u64) {
 	resting.insert(cookie.to_string(), until);
 }
 
+async fn session_get(host: Host, path: &str, cookie: &str) -> Result<WreqResponse, String> {
+	match host {
+		Host::Web => reddit_web_get(path, cookie).await,
+		Host::Api => {
+			let response = reddit_get_as(path.to_string(), token(cookie).await?).await?;
+			let status = response.status().as_u16();
+			if status == 401 {
+				drop_token(cookie);
+			} else if token_refused(path, status) {
+				mint_failed(cookie, now_secs());
+			}
+			Ok(response)
+		}
+	}
+}
+
+async fn token(cookie: &str) -> Result<String, String> {
+	let now = now_secs();
+	if let Some(token) = cached_token(cookie, now) {
+		return Ok(token);
+	}
+	match session_token(cookie).await {
+		Ok((token, expires_in)) => {
+			keep_token(cookie, token.clone(), expires_in, now);
+			Ok(token)
+		}
+		Err(e) => {
+			mint_failed(cookie, now);
+			Err(format!("No token for the session: {e}"))
+		}
+	}
+}
+
 /// Fetches `path` from Reddit's web host as the logged-in session `cookie`.
 ///
 /// Only the cookie is overridden: the client's browser emulation already sends
@@ -163,6 +250,62 @@ async fn reddit_web_get(path: &str, cookie: &str) -> Result<WreqResponse, String
 	let url = format!("{ALTERNATIVE_REDDIT_URL_BASE}{path}");
 
 	CLIENT.load_full().get(&url).header(wreq_header::COOKIE, cookie).send().await.map_err(|e| e.to_string())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Host {
+	Web,
+	Api,
+}
+
+/// www refuses listings and search to sessions, the API posts and `/new`; each is the other's fallback.
+fn hosts(path: &str) -> [Host; 2] {
+	let route = path.split('?').next().unwrap_or_default().trim_end_matches(".json");
+	match Kind::of(path) {
+		Kind::Listing | Kind::All | Kind::Search if !route.ends_with("/new") => [Host::Api, Host::Web],
+		Kind::Subreddit if route.ends_with("/api/widgets") => [Host::Api, Host::Web],
+		_ => [Host::Web, Host::Api],
+	}
+}
+
+/// The API answers a bad token with its block page, not a 401.
+fn token_refused(path: &str, status: u16) -> bool {
+	status == 403 && hosts(path)[0] == Host::Api
+}
+
+/// `None` is a failed mint, kept until it may be retried.
+static TOKENS: LazyLock<Mutex<HashMap<String, Minted>>> = LazyLock::new(Default::default);
+
+type Minted = (Option<String>, u64);
+
+const MINT_RETRY_SECS: u64 = 300;
+
+fn cached_token(cookie: &str, now: u64) -> Option<String> {
+	let tokens = TOKENS.lock().unwrap_or_else(|e| e.into_inner());
+	tokens.get(cookie).filter(|(_, until)| *until > now + 60).and_then(|(token, _)| token.clone())
+}
+
+fn mint_failed_recently(cookie: &str, now: u64) -> bool {
+	let tokens = TOKENS.lock().unwrap_or_else(|e| e.into_inner());
+	tokens.get(cookie).is_some_and(|(token, until)| token.is_none() && *until > now)
+}
+
+fn keep_token(cookie: &str, token: String, expires_in: u64, now: u64) {
+	remember(cookie, Some(token), now + expires_in, now);
+}
+
+fn mint_failed(cookie: &str, now: u64) {
+	remember(cookie, None, now + MINT_RETRY_SECS, now);
+}
+
+fn remember(cookie: &str, token: Option<String>, until: u64, now: u64) {
+	let mut tokens = TOKENS.lock().unwrap_or_else(|e| e.into_inner());
+	tokens.retain(|_, (_, until)| *until > now);
+	tokens.insert(cookie.to_string(), (token, until));
+}
+
+fn drop_token(cookie: &str) {
+	TOKENS.lock().unwrap_or_else(|e| e.into_inner()).remove(cookie);
 }
 
 #[cfg(test)]
@@ -248,5 +391,185 @@ mod tests {
 		assert_eq!(rest_secs(200, Some(42.0), Some(120.0)), None);
 		assert_eq!(rest_secs(200, None, None), None);
 		assert_eq!(rest_secs(403, Some(10.0), Some(120.0)), None);
+	}
+
+	#[test]
+	fn test_listings_and_search_try_the_token_first() {
+		for path in [
+			"/r/rust/hot.json?raw_json=1",
+			"/r/rust.json?raw_json=1",
+			"/r/rust/top.json?t=week&raw_json=1",
+			"/r/popular/hot.json?geo_filter=GLOBAL&raw_json=1",
+			"/r/all+/hot.json?raw_json=1",
+			"/search.json?q=rust&raw_json=1",
+			"/r/rust/search.json?q=async&restrict_sr=on&raw_json=1",
+			"/r/rust/api/widgets?raw_json=1",
+		] {
+			assert_eq!(hosts(path), [Host::Api, Host::Web], "{path}");
+		}
+	}
+
+	#[test]
+	fn test_posts_new_and_the_rest_try_the_cookie_first() {
+		for path in [
+			"/r/redditdev/comments/1wubcvf.json?raw_json=1",
+			"/by_id/t3_1wubcvf.json?raw_json=1",
+			"/r/rust/new.json?raw_json=1",
+			"/r/all+/new.json?raw_json=1",
+			"/r/rust/about.json?raw_json=1",
+			"/user/spez/about.json?raw_json=1",
+			"/r/rust/wiki/index.json?raw_json=1",
+			"/duplicates/1wubcvf.json?raw_json=1",
+		] {
+			assert_eq!(hosts(path), [Host::Web, Host::Api], "{path}");
+		}
+	}
+
+	#[test]
+	fn test_token_is_reused_until_a_minute_before_it_expires() {
+		keep_token("test-reuse", "token".into(), 3600, 1000);
+		assert_eq!(cached_token("test-reuse", 1000).as_deref(), Some("token"));
+		assert_eq!(cached_token("test-reuse", 1000 + 3600 - 61).as_deref(), Some("token"));
+		assert_eq!(cached_token("test-reuse", 1000 + 3600 - 60), None);
+		assert_eq!(cached_token("test-reuse-other", 1000), None);
+	}
+
+	#[test]
+	fn test_failed_mint_waits_before_minting_again() {
+		mint_failed("test-mint", 1000);
+		assert!(mint_failed_recently("test-mint", 1000 + MINT_RETRY_SECS - 1));
+		assert!(!mint_failed_recently("test-mint", 1000 + MINT_RETRY_SECS));
+		assert_eq!(cached_token("test-mint", 1000), None);
+		keep_token("test-mint-ok", "token".into(), 3600, 1000);
+		assert!(!mint_failed_recently("test-mint-ok", 1000));
+	}
+
+	#[test]
+	fn test_finished_tokens_are_forgotten() {
+		keep_token("test-old", "token".into(), 10, 0);
+		mint_failed("test-old-failed", 0);
+		keep_token("test-fresh", "token".into(), 3600, 1000);
+		let tokens = TOKENS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+		assert!(!tokens.contains_key("test-old") && !tokens.contains_key("test-old-failed"));
+		assert!(tokens.contains_key("test-fresh"));
+	}
+
+	#[test]
+	fn test_a_token_refused_where_it_should_work_is_distrusted() {
+		assert!(token_refused("/r/rust/hot.json?raw_json=1", 403));
+		assert!(token_refused("/search.json?q=rust&raw_json=1", 403));
+		assert!(!token_refused("/r/rust/comments/abc.json?raw_json=1", 403));
+		assert!(!token_refused("/r/rust/new.json?raw_json=1", 403));
+		assert!(!token_refused("/r/rust/hot.json?raw_json=1", 429));
+	}
+
+	#[test]
+	fn test_an_expired_token_is_no_refusal() {
+		assert!(!is_refusal(Host::Api, 401));
+		assert!(!is_refusal(Host::Api, 429));
+		assert!(!is_refusal(Host::Web, 429));
+		assert!(is_refusal(Host::Api, 403));
+		assert!(is_refusal(Host::Web, 403));
+		assert!(is_refusal(Host::Web, 401));
+	}
+
+	fn answer(status: u16, headers: &[(&str, &str)]) -> Result<WreqResponse, String> {
+		let mut response = hyper::Response::builder().status(status);
+		for (key, value) in headers {
+			response = response.header(*key, *value);
+		}
+		Ok(WreqResponse::from(response.body("{}").unwrap()))
+	}
+
+	fn ask(path: &str, names: &[&str], reply: fn(Host, &str) -> Result<WreqResponse, String>) -> (Result<u16, bool>, Vec<(Host, String)>) {
+		let calls = Mutex::new(Vec::new());
+		let sessions: Vec<_> = names.iter().map(|name| session(name)).collect();
+		let result = crate::client::block_on_shared(try_sessions(path, &sessions, 0, |host, cookie| {
+			let name = cookie.trim_start_matches("reddit_session=").to_string();
+			calls.lock().unwrap().push((host, name.clone()));
+			async move { reply(host, &name) }
+		}));
+		(result.map(|r| r.status().as_u16()), calls.into_inner().unwrap())
+	}
+
+	#[test]
+	fn test_refused_host_falls_back_to_the_other() {
+		let (result, calls) = ask("/r/rust/hot.json?raw_json=1", &["loop-a"], |host, _| answer(if host == Host::Api { 403 } else { 200 }, &[]));
+		assert_eq!(result, Ok(200));
+		assert_eq!(calls, [(Host::Api, "loop-a".into()), (Host::Web, "loop-a".into())]);
+	}
+
+	#[test]
+	#[sealed_test]
+	fn test_session_out_of_budget_skips_its_other_host() {
+		let (result, calls) = ask("/r/rust/hot.json?raw_json=1", &["loop-tired", "loop-b"], |_, name| match name {
+			"loop-tired" => answer(429, &[("x-ratelimit-reset", "100")]),
+			_ => answer(200, &[]),
+		});
+		assert_eq!(result, Ok(200));
+		assert_eq!(calls, [(Host::Api, "loop-tired".into()), (Host::Api, "loop-b".into())]);
+	}
+
+	#[test]
+	#[sealed_test]
+	fn test_expired_tokens_alone_are_no_refusal() {
+		let (result, _) = ask("/r/rust/hot.json?raw_json=1", &["loop-401"], |host, _| {
+			answer(if host == Host::Api { 401 } else { 429 }, &[])
+		});
+		assert_eq!(result, Err(false));
+	}
+
+	#[test]
+	fn test_session_without_a_token_skips_the_api() {
+		// `mint_failed` would prune other tests' entries
+		TOKENS
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.insert("reddit_session=loop-notoken".into(), (None, u64::MAX));
+		let (_, calls) = ask("/r/rust/hot.json?raw_json=1", &["loop-notoken"], |_, _| answer(200, &[]));
+		assert_eq!(calls, [(Host::Web, "loop-notoken".into())]);
+	}
+
+	#[test]
+	fn test_sessions_get_r_all_with_an_encoded_plus() {
+		assert_eq!(session_path("/r/all/hot.json?raw_json=1"), "/r/all%2B/hot.json?raw_json=1");
+		assert_eq!(session_path("/r/all.json?raw_json=1"), "/r/all%2B.json?raw_json=1");
+		assert_eq!(session_path("/r/rust/hot.json?raw_json=1"), "/r/rust/hot.json?raw_json=1");
+	}
+
+	#[test]
+	fn test_missing_page_is_an_answer_not_a_refusal() {
+		let (result, calls) = ask("/r/rust/wiki/index.json?raw_json=1", &["loop-404", "loop-c"], |_, _| answer(404, &[]));
+		assert_eq!(result, Ok(404));
+		assert_eq!(calls, [(Host::Web, "loop-404".into())]);
+		assert!(matches!(unparsable(404), Failure::Final(_)));
+		let missing = serde_json::json!({"reason": "PAGE_NOT_FOUND", "message": "Not Found"});
+		assert!(matches!(reddit_error(404, &missing, "/r/rust/wiki/index.json"), Failure::Final(msg) if msg.contains("PAGE_NOT_FOUND")));
+	}
+
+	#[test]
+	fn test_error_explained_in_json_is_an_answer_not_a_refusal() {
+		let (result, calls) = ask("/r/europa/wiki/index.json?raw_json=1", &["loop-wiki", "loop-d"], |_, _| {
+			answer(403, &[("content-type", "application/json; charset=UTF-8")])
+		});
+		assert_eq!(result, Ok(403));
+		assert_eq!(calls, [(Host::Web, "loop-wiki".into())]);
+		let (result, _) = ask("/r/rust/comments/abc.json?raw_json=1", &["loop-block"], |_, _| {
+			answer(403, &[("content-type", "text/html")])
+		});
+		assert_eq!(result, Err(true));
+		assert!(!is_answer(401, true));
+		assert!(!is_answer(429, true));
+		assert!(!is_answer(500, true));
+		let disabled = serde_json::json!({"reason": "WIKI_DISABLED", "message": "Forbidden"});
+		assert!(matches!(reddit_error(403, &disabled, "/r/europa/wiki/index.json"), Failure::Final(msg) if msg.contains("WIKI_DISABLED")));
+		assert!(matches!(unparsable(403), Failure::Blocked));
+	}
+
+	#[test]
+	fn test_dropped_token_is_minted_again() {
+		keep_token("test-drop", "token".into(), 3600, 1000);
+		drop_token("test-drop");
+		assert_eq!(cached_token("test-drop", 1000), None);
 	}
 }
