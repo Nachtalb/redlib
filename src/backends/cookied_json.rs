@@ -44,7 +44,7 @@ static NEXT_SESSION: AtomicUsize = AtomicUsize::new(0);
 /// emulation, so switch to another one and try once more with the sessions
 /// that still have budget.
 async fn fetch(path: &str) -> Result<Value, Failure> {
-	let path = &*Kind::json_path(path);
+	let path = &*session_path(path);
 	let mut response = web_session_get(path).await;
 	if let Err(refused) = response {
 		if worth_a_new_browser(path, refused) && reroll_client("Reddit refused every session") {
@@ -74,9 +74,12 @@ fn reddit_error(status: u16, json: &Value, path: &str) -> Failure {
 	Failure::Final(format!("Reddit error {status} {reason}: {message} | {path}"))
 }
 
-#[allow(dead_code)]
+/// The API reads the bare `+` of `r/all+` as a space for a session's token; anonymous requests need it bare.
 fn session_path(path: &str) -> std::borrow::Cow<'_, str> {
-	Kind::json_path(path)
+	match Kind::json_path(path) {
+		std::borrow::Cow::Owned(all) => all.replacen("/r/all+", "/r/all%2B", 1).into(),
+		same => same,
+	}
 }
 
 fn is_json(response: &WreqResponse) -> bool {
