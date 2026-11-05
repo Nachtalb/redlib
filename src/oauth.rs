@@ -228,11 +228,23 @@ impl MobileSpoofAuth {
 	}
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum Grant<'a> {
+	Loid,
+	Session(&'a str),
+}
+
 impl MobileSpoofAuth {
-	async fn authenticate_with(&mut self, client: &wreq::Client) -> Result<OauthResponse, AuthError> {
+	async fn authenticate_with(&mut self, client: &wreq::Client, grant: Grant<'_>) -> Result<OauthResponse, AuthError> {
 		// Construct URL for OAuth token
-		let url = format!("{AUTH_ENDPOINT}/auth/v2/oauth/access-token/loid");
+		let url = match grant {
+			Grant::Loid => format!("{AUTH_ENDPOINT}/auth/v2/oauth/access-token/loid"),
+			Grant::Session(_) => format!("{AUTH_ENDPOINT}/auth/v2/oauth/access-token/session"),
+		};
 		let mut builder = client.post(&url);
+		if let Grant::Session(cookie) = grant {
+			builder = builder.header("Cookie", cookie);
+		}
 
 		// Add headers from spoofed client
 		for (key, value) in &self.device.initial_headers {
@@ -256,7 +268,10 @@ impl MobileSpoofAuth {
 		let resp = builder.json(&json).send().await?;
 
 		trace!("Received response with status {} and length {:?}", resp.status(), resp.headers().get("content-length"));
-		trace!("OAuth headers: {:#?}", resp.headers());
+		// may hold a new session cookie
+		if let Grant::Loid = grant {
+			trace!("OAuth headers: {:#?}", resp.headers());
+		}
 
 		// Parse headers - loid header _should_ be saved sent on subsequent token refreshes.
 		// Technically it's not needed, but it's easy for Reddit API to check for this.
@@ -294,7 +309,9 @@ impl MobileSpoofAuth {
 			.as_u64()
 			.ok_or_else(|| AuthError::Field((json.clone(), "expires_in: as_u64")))?;
 
-		info!("[✅] Success - Retrieved token \"{}...\", expires in {}", &token[..32], expires_in);
+		if let Grant::Loid = grant {
+			info!("[✅] Success - Retrieved token \"{}...\", expires in {}", &token[..32], expires_in);
+		}
 
 		Ok(OauthResponse {
 			token,
@@ -304,11 +321,24 @@ impl MobileSpoofAuth {
 	}
 }
 
+/// The error never contains the token or the cookie.
+pub(crate) async fn session_token(cookie: &str) -> Result<(String, u64), String> {
+	let response = MobileSpoofAuth::new()
+		.authenticate_with(&CLIENT.load_full(), Grant::Session(cookie))
+		.await
+		.map_err(|e| match e {
+			AuthError::Wreq(error) => error.to_string(),
+			AuthError::SerdeDeserialize(error) => error.to_string(),
+			AuthError::Field((_, field)) => format!("no {field} in Reddit's answer"),
+		})?;
+	Ok((response.token, response.expires_in))
+}
+
 /// Headers of a fresh anonymous token minted with `client`.
 #[cfg(test)]
 pub(crate) async fn android_headers(client: &wreq::Client) -> Result<HashMap<String, String>, String> {
 	let mut backend = MobileSpoofAuth::new();
-	let response = backend.authenticate_with(client).await.map_err(|e| format!("{e:?}"))?;
+	let response = backend.authenticate_with(client, Grant::Loid).await.map_err(|e| format!("{e:?}"))?;
 	let mut headers = backend.get_headers();
 	headers.insert("Authorization".to_owned(), format!("Bearer {}", response.token));
 	Ok(headers)
@@ -316,7 +346,7 @@ pub(crate) async fn android_headers(client: &wreq::Client) -> Result<HashMap<Str
 
 impl OauthBackend for MobileSpoofAuth {
 	async fn authenticate(&mut self) -> Result<OauthResponse, AuthError> {
-		self.authenticate_with(&CLIENT.load_full()).await
+		self.authenticate_with(&CLIENT.load_full(), Grant::Loid).await
 	}
 
 	fn user_agent(&self) -> &str {

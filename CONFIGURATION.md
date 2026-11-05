@@ -85,6 +85,8 @@ REDLIB_REDDIT_COOKIE="reddit_session=...|reddit_session=..."
 
 The `reddit_session=` prefix is optional. A whole `Cookie` header works too, as long as it has `reddit_session` in it. Sessions whose `reddit_session` has expired (it lasts about six months) are skipped with a warning in the log.
 
+Reddit's website refuses subreddit listings and search to sessions, so for those Redlib mints a token for the session the way the Android app does (valid for a day, minted again when it expires or Reddit stops accepting it) and asks Reddit's API with it. Posts and comments still go to the website with the cookie, because the API refuses those to the token; each is the other's fallback. Neither serves `/new` to sessions, so it has to come from another backend. A session that can't get a token, or whose token the API refuses, waits five minutes before the next try and uses the website meanwhile. Each account has about 100 requests per window, shared by both; a session that used them up rests until Reddit resets them.
+
 To add or remove sessions without a restart, put them in a file and point `REDLIB_REDDIT_COOKIE_FILE` at it. Each line is one session in the same form, lines starting with `#` are comments. Redlib checks the file for changes every 10 seconds; if it can't be read, the sessions read last stay in use. Both settings can be combined.
 
 ```bash
@@ -124,7 +126,7 @@ REDLIB_ENDPOINTS_COMMENTS="cookied-json,gql,scraped"
 
 While running, Redlib reorders the listed backends by how often each worked in the last half hour or so, counting session backends as twice as expensive (they use up the account's request budget). Your order is where it starts after a restart, and where a backend drifts back to once its failures are old, so a blocked backend gets tried again later. `/info` shows the current order and each backend's score.
 
-`json` is Reddit's API without an account, `cookied-json` the same with a session from `REDLIB_REDDIT_COOKIE`, `gql` Reddit's GraphQL API (what the Android app uses), and `scraped` comments from the HTML Reddit serves logged-out visitors.
+`json` is Reddit's API without an account, `cookied-json` the same with a session from `REDLIB_REDDIT_COOKIE` (from Reddit's website with the cookie, and for listings and search from the API with a token minted for the session like the app does), `gql` Reddit's GraphQL API (what the Android app uses), and `scraped` comments from the HTML Reddit serves logged-out visitors.
 
 | `<KIND>`     | `json`     | `cookied-json` | `gql` | `scraped` | Default order |
 | ------------ | ---------- | -------------- | ----- | --------- | ------------- |

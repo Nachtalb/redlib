@@ -1,7 +1,8 @@
-//! Reddit's web host with the logged-in sessions from `REDLIB_REDDIT_COOKIE`.
+//! Reddit with the sessions from `REDLIB_REDDIT_COOKIE`, on the web host and the API.
 
 use super::{check_json, Backend, Failure, Fetch, Kind};
-use crate::client::{now_secs, reroll_client, session_cookies, IntoHyperResponse, ALTERNATIVE_REDDIT_URL_BASE, CLIENT};
+use crate::client::{now_secs, reddit_get_as, reroll_client, session_cookies, IntoHyperResponse, ALTERNATIVE_REDDIT_URL_BASE, CLIENT};
+use crate::oauth::session_token;
 use bytes::Buf;
 use log::{trace, warn};
 use serde_json::Value;
@@ -87,35 +88,52 @@ fn no_answer(refused: bool) -> Failure {
 	}
 }
 
-/// Tries `path` on Reddit's web host with each session that has budget, in
-/// turn from a rotating index, and returns the first successful response, or
-/// whether any session was refused for another reason than its budget.
 async fn web_session_get(path: &str) -> Result<WreqResponse, bool> {
 	let sessions = awake(session_cookies(), now_secs());
 	let start = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+	try_sessions(path, &sessions, start, |host, cookie| async move { session_get(host, path, &cookie).await }).await
+}
+
+async fn try_sessions<G, F>(path: &str, sessions: &[(String, String)], start: usize, get: G) -> Result<WreqResponse, bool>
+where
+	G: Fn(Host, String) -> F,
+	F: Future<Output = Result<WreqResponse, String>>,
+{
 	let mut refused = false;
 	for i in 0..sessions.len() {
 		let (label, cookie) = &sessions[(start + i) % sessions.len()];
-		let response = reddit_web_get(path, cookie).await;
-		if let Ok(web_response) = &response {
-			note_budget(label, cookie, web_response);
-		}
-		match response {
-			Ok(web_response) if web_response.status().is_success() => {
-				trace!("Retried {path} with session {label}: status {}", web_response.status());
-				return Ok(web_response);
+		for host in hosts(path) {
+			if host == Host::Api && mint_failed_recently(cookie, now_secs()) {
+				continue;
 			}
-			Ok(web_response) => {
-				refused |= web_response.status() != wreq::StatusCode::TOO_MANY_REQUESTS;
-				warn!("Session {label} was refused for {path}: status {}", web_response.status());
+			match get(host, cookie.clone()).await {
+				Ok(response) if response.status().is_success() => {
+					note_budget(label, cookie, &response);
+					trace!("Retried {path} with session {label} on {host:?}: status {}", response.status());
+					return Ok(response);
+				}
+				Ok(response) => {
+					note_budget(label, cookie, &response);
+					refused |= is_refusal(host, response.status().as_u16());
+					warn!("Session {label} was refused for {path} on {host:?}: status {}", response.status());
+				}
+				Err(e) => {
+					refused = true;
+					warn!("Couldn't get {path} with session {label} on {host:?}: {e}");
+				}
 			}
-			Err(e) => {
-				refused = true;
-				warn!("Couldn't reach Reddit's web host for {path}: {e}");
+			// the budget is the account's
+			if awake(vec![(label.clone(), cookie.clone())], now_secs()).is_empty() {
+				break;
 			}
 		}
 	}
 	Err(refused)
+}
+
+/// A used-up budget or an expired token isn't the browser emulation's fault.
+fn is_refusal(host: Host, status: u16) -> bool {
+	status != 429 && !(host == Host::Api && status == 401)
 }
 
 /// How long a session rests after a response with `status` and Reddit's
@@ -153,6 +171,39 @@ fn send_to_rest(cookie: &str, until: u64, now: u64) {
 	resting.insert(cookie.to_string(), until);
 }
 
+async fn session_get(host: Host, path: &str, cookie: &str) -> Result<WreqResponse, String> {
+	match host {
+		Host::Web => reddit_web_get(path, cookie).await,
+		Host::Api => {
+			let response = reddit_get_as(path.to_string(), token(cookie).await?).await?;
+			let status = response.status().as_u16();
+			if status == 401 {
+				drop_token(cookie);
+			} else if token_refused(path, status) {
+				mint_failed(cookie, now_secs());
+			}
+			Ok(response)
+		}
+	}
+}
+
+async fn token(cookie: &str) -> Result<String, String> {
+	let now = now_secs();
+	if let Some(token) = cached_token(cookie, now) {
+		return Ok(token);
+	}
+	match session_token(cookie).await {
+		Ok((token, expires_in)) => {
+			keep_token(cookie, token.clone(), expires_in, now);
+			Ok(token)
+		}
+		Err(e) => {
+			mint_failed(cookie, now);
+			Err(format!("No token for the session: {e}"))
+		}
+	}
+}
+
 /// Fetches `path` from Reddit's web host as the logged-in session `cookie`.
 ///
 /// Only the cookie is overridden: the client's browser emulation already sends
@@ -166,63 +217,60 @@ async fn reddit_web_get(path: &str, cookie: &str) -> Result<WreqResponse, String
 	CLIENT.load_full().get(&url).header(wreq_header::COOKIE, cookie).send().await.map_err(|e| e.to_string())
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Host {
 	Web,
 	Api,
 }
 
-#[allow(dead_code)]
-fn hosts(_path: &str) -> [Host; 2] {
-	[Host::Web, Host::Api]
+/// www refuses listings and search to sessions, the API posts and `/new`; each is the other's fallback.
+fn hosts(path: &str) -> [Host; 2] {
+	let route = path.split('?').next().unwrap_or_default().trim_end_matches(".json");
+	match Kind::of(path) {
+		Kind::Listing | Kind::All | Kind::Search if !route.ends_with("/new") => [Host::Api, Host::Web],
+		Kind::Subreddit if route.ends_with("/api/widgets") => [Host::Api, Host::Web],
+		_ => [Host::Web, Host::Api],
+	}
 }
 
-#[allow(dead_code)]
-fn cached_token(_cookie: &str, _now: u64) -> Option<String> {
-	None
+/// The API answers a bad token with its block page, not a 401.
+fn token_refused(path: &str, status: u16) -> bool {
+	status == 403 && hosts(path)[0] == Host::Api
 }
-
-#[allow(dead_code)]
-fn keep_token(_cookie: &str, _token: String, _expires_in: u64, _now: u64) {}
-
-#[allow(dead_code)]
-fn drop_token(_cookie: &str) {}
 
 /// `None` is a failed mint, kept until it may be retried.
-#[allow(dead_code)]
 static TOKENS: LazyLock<Mutex<HashMap<String, Minted>>> = LazyLock::new(Default::default);
 
 type Minted = (Option<String>, u64);
 
-#[allow(dead_code)]
 const MINT_RETRY_SECS: u64 = 300;
 
-#[allow(dead_code)]
-fn mint_failed_recently(_cookie: &str, _now: u64) -> bool {
-	false
+fn cached_token(cookie: &str, now: u64) -> Option<String> {
+	let tokens = TOKENS.lock().unwrap_or_else(|e| e.into_inner());
+	tokens.get(cookie).filter(|(_, until)| *until > now + 60).and_then(|(token, _)| token.clone())
 }
 
-#[allow(dead_code)]
-fn mint_failed(_cookie: &str, _now: u64) {}
-
-#[allow(dead_code)]
-fn token_refused(_path: &str, _status: u16) -> bool {
-	false
+fn mint_failed_recently(cookie: &str, now: u64) -> bool {
+	let tokens = TOKENS.lock().unwrap_or_else(|e| e.into_inner());
+	tokens.get(cookie).is_some_and(|(token, until)| token.is_none() && *until > now)
 }
 
-#[allow(dead_code)]
-fn is_refusal(_host: Host, _status: u16) -> bool {
-	true
+fn keep_token(cookie: &str, token: String, expires_in: u64, now: u64) {
+	remember(cookie, Some(token), now + expires_in, now);
 }
 
-#[allow(dead_code)]
-async fn try_sessions<G, F>(_path: &str, _sessions: &[(String, String)], _start: usize, _get: G) -> Result<WreqResponse, bool>
-where
-	G: Fn(Host, String) -> F,
-	F: Future<Output = Result<WreqResponse, String>>,
-{
-	Err(true)
+fn mint_failed(cookie: &str, now: u64) {
+	remember(cookie, None, now + MINT_RETRY_SECS, now);
+}
+
+fn remember(cookie: &str, token: Option<String>, until: u64, now: u64) {
+	let mut tokens = TOKENS.lock().unwrap_or_else(|e| e.into_inner());
+	tokens.retain(|_, (_, until)| *until > now);
+	tokens.insert(cookie.to_string(), (token, until));
+}
+
+fn drop_token(cookie: &str) {
+	TOKENS.lock().unwrap_or_else(|e| e.into_inner()).remove(cookie);
 }
 
 #[cfg(test)]
