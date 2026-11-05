@@ -90,7 +90,7 @@ From [VictorVow1](https://github.com/VictorVow1) ([#16](https://github.com/Nacht
 
 From [0dragosh](https://github.com/0dragosh) ([patch](https://gist.github.com/0dragosh/6afe28f5e4f8659f5ae04ac2b418402b), [redlib-org#446](https://github.com/redlib-org/redlib/issues/446)):
 
-- **Logged-in Reddit sessions**: Reddit blocks post pages for logged-out clients. The `cookied-json` backend requests them from `www.reddit.com` with the session cookie in `REDLIB_REDDIT_COOKIE`. Subreddit listings and search, which Reddit refuses to sessions there, come from `oauth.reddit.com` with a token minted for the session like the Android app does; each host is the other's fallback. The cookie never shows on `/info` and is never logged. See [Reddit session](CONFIGURATION.md#reddit-session).
+- **Logged-in Reddit sessions**: Reddit blocks post pages for logged-out clients. The `cookied-json` backend requests them from `www.reddit.com` with the session cookie in `REDLIB_REDDIT_COOKIE`. Subreddit listings and search, which Reddit refuses to sessions there, come from `oauth.reddit.com` with a token minted for the session like the Android app does; each host is the other's fallback. A missing or disabled page (a 404, or a 403 Reddit explains in JSON) is Reddit's answer, not a refusal. The cookie never shows on `/info` and is never logged. See [Reddit session](CONFIGURATION.md#reddit-session).
 
 From [polak14](https://github.com/polak14) ([`a63460b`](https://github.com/polak14/redlib/commit/a63460b4ac29c27401e3e2aaab34b68dca02991e)):
 

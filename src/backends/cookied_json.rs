@@ -52,6 +52,7 @@ async fn fetch(path: &str) -> Result<Value, Failure> {
 		}
 	}
 	let response = response.map_err(no_answer)?;
+	let status = response.status().as_u16();
 
 	let body = response
 		.into_hyper_response()
@@ -59,27 +60,38 @@ async fn fetch(path: &str) -> Result<Value, Failure> {
 		.collect_bytes()
 		.await
 		.map_err(|e| Failure::Network(format!("Failed receiving body from Reddit: {e} | {path}")))?;
-	// An empty or non-JSON body from the web host is a refusal, not the
-	// OAuth rate limit.
-	match serde_json::from_reader(body.reader()) {
+	match serde_json::from_reader::<_, Value>(body.reader()) {
+		Ok(json) if status >= 400 && json["error"].is_null() => Err(reddit_error(status, &json, path)),
 		Ok(json) => check_json(json, path).await,
-		Err(_) => Err(Failure::Blocked),
+		Err(_) => Err(unparsable(status)),
 	}
 }
 
-#[allow(dead_code)]
-fn reddit_error(_status: u16, _json: &Value, _path: &str) -> Failure {
-	Failure::Blocked
+/// A JSON error without the `error` field `check_json` looks for, like `{"reason": "WIKI_DISABLED"}`.
+fn reddit_error(status: u16, json: &Value, path: &str) -> Failure {
+	let reason = json["reason"].as_str().unwrap_or("no reason");
+	let message = json["message"].as_str().unwrap_or_default();
+	Failure::Final(format!("Reddit error {status} {reason}: {message} | {path}"))
 }
 
-#[allow(dead_code)]
-fn unparsable(_status: u16) -> Failure {
-	Failure::Blocked
+fn is_json(response: &WreqResponse) -> bool {
+	response
+		.headers()
+		.get(wreq_header::CONTENT_TYPE)
+		.is_some_and(|v| v.as_bytes().starts_with(b"application/json"))
 }
 
-#[allow(dead_code)]
-fn is_answer(status: u16, _json: bool) -> bool {
-	(200..300).contains(&status)
+fn unparsable(status: u16) -> Failure {
+	if status == 404 {
+		Failure::Final("Not found".into())
+	} else {
+		Failure::Blocked
+	}
+}
+
+/// Refusals are HTML block pages; a 401 or 429 is about the session, not the page.
+fn is_answer(status: u16, json: bool) -> bool {
+	(200..300).contains(&status) || status == 404 || (status == 403 && json)
 }
 
 /// Subreddit listings and search are refused to sessions on every fingerprint
@@ -122,7 +134,7 @@ where
 				continue;
 			}
 			match get(host, cookie.clone()).await {
-				Ok(response) if response.status().is_success() => {
+				Ok(response) if is_answer(response.status().as_u16(), is_json(&response)) => {
 					note_budget(label, cookie, &response);
 					trace!("Retried {path} with session {label} on {host:?}: status {}", response.status());
 					return Ok(response);
