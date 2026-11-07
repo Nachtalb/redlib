@@ -223,11 +223,19 @@ async fn session_get(host: Host, path: &str, cookie: &str) -> Result<WreqRespons
 }
 
 async fn token(cookie: &str) -> Result<String, String> {
+	token_with(cookie, session_token).await
+}
+
+async fn token_with<'a, M, F>(cookie: &'a str, mint: M) -> Result<String, String>
+where
+	M: FnOnce(&'a str) -> F,
+	F: Future<Output = Result<(String, u64), String>>,
+{
 	let now = now_secs();
 	if let Some(token) = cached_token(cookie, now) {
 		return Ok(token);
 	}
-	match session_token(cookie).await {
+	match mint(cookie).await {
 		Ok((token, expires_in)) => {
 			keep_token(cookie, token.clone(), expires_in, now);
 			Ok(token)
@@ -313,6 +321,20 @@ mod tests {
 	use super::*;
 	use sealed_test::prelude::*;
 
+	#[test]
+	fn test_requests_missing_the_cache_together_mint_one_token() {
+		let mints = AtomicUsize::new(0);
+		let mints = &mints;
+		let mint = move |_: &str| async move {
+			mints.fetch_add(1, Ordering::Relaxed);
+			tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+			Ok(("token".to_string(), 3600))
+		};
+		let cookie = "reddit_session=together";
+		let tokens = crate::client::block_on_shared(async { tokio::join!(token_with(cookie, mint), token_with(cookie, mint), token_with(cookie, mint)) });
+		assert_eq!([tokens.0, tokens.1, tokens.2], [Ok("token".to_string()), Ok("token".to_string()), Ok("token".to_string())]);
+		assert_eq!(mints.load(Ordering::Relaxed), 1);
+	}
 	#[test]
 	fn test_listing_and_search_refusals_keep_the_fingerprint() {
 		assert!(!blames_fingerprint("/r/rust/hot.json?raw_json=1"));
