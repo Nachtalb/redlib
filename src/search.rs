@@ -446,4 +446,24 @@ mod tests {
 		no_more.params.after.clear();
 		assert!(!no_more.render().unwrap().contains("show_more"));
 	}
+
+	#[tokio::test]
+	async fn test_feed_videos_carry_their_size_in_css() {
+		let post = serde_json::json!({ "kind": "t3", "data": {
+			"id": "abc", "title": "t", "subreddit": "test", "permalink": "/r/test/comments/abc/t/",
+			"secure_media": { "reddit_video": {
+				"fallback_url": "https://v.redd.it/abc/CMAF_720.mp4?source=fallback",
+				"hls_url": "https://v.redd.it/abc/HLSPlaylist.m3u8",
+			} },
+			"preview": { "images": [{ "source": { "url": "https://external-preview.redd.it/abc.png", "width": 405, "height": 720 } }] },
+		}});
+		for hls in ["off", "on"] {
+			let mut results = page("posts", "", "");
+			results.url = "/search?q=t".to_string();
+			results.prefs.use_hls = hls.to_string();
+			results.posts.push(utils::parse_post(&post).await);
+			let html = results.render().unwrap();
+			assert!(html.contains(r#"width="405" height="720" style="--w: 405; --h: 720""#), "use_hls={hls}: {html}");
+		}
+	}
 }

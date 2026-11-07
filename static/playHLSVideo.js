@@ -26,6 +26,8 @@
 
             oldVideo.parentNode.replaceChild(newVideo, oldVideo);
 
+            var hls = null;
+
             function getIndexOfDefault(length) {
                 switch (qualitySetting) {
                     case "best":
@@ -46,7 +48,7 @@
                     wantsPlay = false;
                 }
                 newVideo.addEventListener("pause", onPause);
-                var hls = new Hls({ autoStartLoad: false });
+                hls = new Hls({ autoStartLoad: false });
                 hls.loadSource(playlist);
                 // Attaching resets the element to paused, so resume here unless the user paused meanwhile.
                 hls.once(Hls.Events.MEDIA_ATTACHED, function () {
@@ -117,6 +119,20 @@
             }
 
             newVideo.addEventListener("play", initializeHls);
+
+            // Safari's back/forward cache can restore the page with hls.js's media source gone, so start over on the next play.
+            window.addEventListener("pageshow", function (event) {
+                if (event.persisted && hls && newVideo.readyState === 0) {
+                    hls.destroy();
+                    hls = null;
+                    var qualitySelector = newVideo.parentNode.querySelector(".quality-selector");
+                    if (qualitySelector) {
+                        qualitySelector.remove();
+                    }
+                    newVideo.src = "about:blank";
+                    newVideo.addEventListener("play", initializeHls);
+                }
+            });
         });
     }
 })();
