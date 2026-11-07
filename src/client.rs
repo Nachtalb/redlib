@@ -18,7 +18,7 @@ use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicUsize};
 use std::sync::{Arc, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use wreq::dns::{Addrs, GaiResolver, Name, Resolve, Resolving};
+use wreq::dns::{Addrs, Name, Resolve, Resolving};
 use wreq::redirect::Policy;
 use wreq::{header as wreq_header, Client as WreqClient, Method, Response as WreqResponse};
 use wreq_util::{Emulation, Platform, Profile};
@@ -234,7 +234,7 @@ fn client_for(profile: Profile, platform: Platform) -> WreqClient {
 	WreqClient::builder()
 		.emulation(Emulation::builder().profile(profile).platform(platform).build())
 		.redirect(Policy::none())
-		.dns_resolver(RedgifsIpv4Resolver(GaiResolver::new()))
+		.dns_resolver(RedgifsIpv4Resolver)
 		.build()
 		.expect("Should always be able to build a client")
 }
@@ -287,18 +287,15 @@ pub static IPV6_ONLY: AtomicBool = AtomicBool::new(false);
 /// RedGifs binds its API token to the IP that fetched it, and a dual-stack host
 /// can connect over either IPv4 or IPv6. RedGifs hosts therefore resolve to IPv4
 /// only, unless Redlib runs IPv6-only or there is no IPv4 address.
-struct RedgifsIpv4Resolver(GaiResolver);
+struct RedgifsIpv4Resolver;
 
 impl Resolve for RedgifsIpv4Resolver {
 	fn resolve(&self, name: Name) -> Resolving {
 		let pin = !IPV6_ONLY.load(Ordering::Relaxed) && crate::redgifs::is_redgifs_domain(name.as_str());
-		let lookup = self.0.resolve(name);
+		let host = name.as_str().to_owned();
 		Box::pin(async move {
-			let addrs = lookup.await?;
-			if !pin {
-				return Ok(addrs);
-			}
-			Ok(Box::new(prefer_ipv4(addrs.collect()).into_iter()) as Addrs)
+			let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, 0)).await?.collect();
+			Ok(Box::new(if pin { prefer_ipv4(addrs) } else { addrs }.into_iter()) as Addrs)
 		})
 	}
 }
