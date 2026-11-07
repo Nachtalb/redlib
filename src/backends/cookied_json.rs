@@ -214,7 +214,7 @@ async fn session_get(host: Host, path: &str, cookie: &str) -> Result<WreqRespons
 			let status = response.status().as_u16();
 			if status == 401 {
 				drop_token(cookie);
-			} else if token_refused(path, status) {
+			} else if token_refused(path, status, is_json(&response)) {
 				mint_failed(cookie, now_secs());
 			}
 			Ok(response)
@@ -269,7 +269,7 @@ fn hosts(path: &str) -> [Host; 2] {
 }
 
 /// The API answers a bad token with its block page, not a 401.
-fn token_refused(path: &str, status: u16) -> bool {
+fn token_refused(path: &str, status: u16, _json: bool) -> bool {
 	status == 403 && hosts(path)[0] == Host::Api
 }
 
@@ -456,11 +456,17 @@ mod tests {
 
 	#[test]
 	fn test_a_token_refused_where_it_should_work_is_distrusted() {
-		assert!(token_refused("/r/rust/hot.json?raw_json=1", 403));
-		assert!(token_refused("/search.json?q=rust&raw_json=1", 403));
-		assert!(!token_refused("/r/rust/comments/abc.json?raw_json=1", 403));
-		assert!(!token_refused("/r/rust/new.json?raw_json=1", 403));
-		assert!(!token_refused("/r/rust/hot.json?raw_json=1", 429));
+		assert!(token_refused("/r/rust/hot.json?raw_json=1", 403, false));
+		assert!(token_refused("/search.json?q=rust&raw_json=1", 403, false));
+		assert!(!token_refused("/r/rust/comments/abc.json?raw_json=1", 403, false));
+		assert!(!token_refused("/r/rust/new.json?raw_json=1", 403, false));
+		assert!(!token_refused("/r/rust/hot.json?raw_json=1", 429, false));
+	}
+
+	#[test]
+	fn test_a_403_reddit_explains_keeps_the_token() {
+		assert!(!token_refused("/r/lounge/hot.json?raw_json=1", 403, true));
+		assert!(!token_refused("/r/quarantined/hot.json?raw_json=1", 403, true));
 	}
 
 	#[test]
