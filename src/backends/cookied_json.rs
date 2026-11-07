@@ -222,6 +222,9 @@ async fn session_get(host: Host, path: &str, cookie: &str) -> Result<WreqRespons
 	}
 }
 
+/// One mint at a time, so requests that miss the cache together don't each mint a token.
+static MINTING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 async fn token(cookie: &str) -> Result<String, String> {
 	token_with(cookie, session_token).await
 }
@@ -231,9 +234,16 @@ where
 	M: FnOnce(&'a str) -> F,
 	F: Future<Output = Result<(String, u64), String>>,
 {
+	if let Some(token) = cached_token(cookie, now_secs()) {
+		return Ok(token);
+	}
+	let _minting = MINTING.lock().await;
 	let now = now_secs();
 	if let Some(token) = cached_token(cookie, now) {
 		return Ok(token);
+	}
+	if mint_failed_recently(cookie, now) {
+		return Err("No token for the session: the last try failed".into());
 	}
 	match mint(cookie).await {
 		Ok((token, expires_in)) => {
