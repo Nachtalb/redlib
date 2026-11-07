@@ -358,9 +358,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cached"
-version = "4.0.3"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85a0dbacacc2069fc95062beec3f79a28f0f54ef2f72d7fe69000d1557f7c3d0"
+checksum = "6f886e989b5b6e7991606f2550e45a99e130024465ba8d67f9f9b256eb7044bf"
 dependencies = [
  "ahash",
  "async-lock",
@@ -478,9 +478,9 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clearurls"
-version = "0.0.4"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e291c00af89ac0a5b400d9ba46a682e38015ae3cd8926dbbe85b3b864d550be3"
+checksum = "2779c42fed298a00dd6b685befb66f400b3a32dae25c736c95dab6f98f551da2"
 dependencies = [
  "percent-encoding",
  "regex",
@@ -1473,15 +1473,15 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.34"
+version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "lru"
-version = "0.18.5"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef9ac18847474e638e3702b76c65d4eb93428471a74778ef0f1be711717f89b5"
+checksum = "4a9f71e3591c7ec44d3e563e87bf14ddc2bada8519dca046e5b0e560cd004e2d"
 dependencies = [
  "hashbrown 0.17.1",
 ]
@@ -1778,9 +1778,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.13.5"
+version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "278e9268c93b9e498a2da46c34d90ba93a3255eb99009646398f34bc73ab36eb"
+checksum = "3db2be46835f013dd3f4fa7f5f7402c537787b54ebb6fe2b94bbdd7e2669bb7b"
 dependencies = [
  "bitflags",
  "memchr",
@@ -1915,7 +1915,7 @@ dependencies = [
  "uuid",
  "wreq",
  "wreq-util",
- "zstd 0.13.3",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -3022,9 +3022,9 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "wreq"
-version = "0.16.1"
+version = "0.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16454175c8cb23d4a7285bab53b72460686195f5aef655d1abad70ab97ef46d4"
+checksum = "d2b11a67378558357ed083260fd0bbced0481e4d32e2fb722be9c52b42ee08d4"
 dependencies = [
  "btls",
  "btls-sys",
