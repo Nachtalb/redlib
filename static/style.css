@@ -1528,6 +1528,12 @@ a.search_subreddit:hover .search_subreddit_name {
     margin: auto;
 }
 
+/* Size from the attributes, not the poster: WebKit drops the poster's size when playback starts and the posts below jump under the finger */
+.post_media_video[style] {
+    aspect-ratio: var(--w) / var(--h);
+    width: min(var(--w) * 1px, 512px * var(--w) / var(--h));
+}
+
 .post_media_image.short svg,
 .post_media_image.short img {
     width: auto;
