@@ -45,6 +45,7 @@ Bugs present in upstream Redlib that are fixed here:
 - **Pausing an HLS video while it loads** was ignored and the video started playing anyway.
 - **"Enable HLS to view with audio" showed on every video**, also when the MP4 played without HLS has sound or the video has none. It now only shows when HLS is the only way to hear it.
 - **Tapping a video on an iPhone could open the post below it**: Safari shrank the video when it started loading, so the posts below jumped up under the finger. Videos now keep their size ([#137](https://github.com/Nachtalb/redlib/issues/137)).
+- **HLS videos stayed dead after going back** in Safari when it restored the page from its back/forward cache. The next tap now loads them again ([#137](https://github.com/Nachtalb/redlib/issues/137)).
 - **Settings codes broke on every new setting**: codes exported before a new field was added failed to restore. See [Settings codes](#settings-codes).
 - **Comment search had no submit button.**
 - **Large numbers** show as `10K` instead of `10.0K`.
