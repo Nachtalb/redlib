@@ -269,8 +269,8 @@ fn hosts(path: &str) -> [Host; 2] {
 }
 
 /// The API answers a bad token with its block page, not a 401.
-fn token_refused(path: &str, status: u16, _json: bool) -> bool {
-	status == 403 && hosts(path)[0] == Host::Api
+fn token_refused(path: &str, status: u16, json: bool) -> bool {
+	status == 403 && !json && hosts(path)[0] == Host::Api
 }
 
 /// `None` is a failed mint, kept until it may be retried.
