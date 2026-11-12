@@ -7,6 +7,7 @@
 
 use super::{cookied_json::CookiedJson, gql::Gql, json::Json, Backend};
 use crate::client::block_on_shared;
+use sealed_test::prelude::*;
 use serde_json::Value;
 
 /// A post that has comments and stays up.
@@ -108,6 +109,17 @@ fn test_json_all() {
 	let page = get(&Json, "/r/all/new.json?raw_json=1");
 	assert_posts(&page, "json all");
 	assert!(children(&page, "json all").len() >= 20, "json all: page size ignored");
+}
+
+/// Reddit refuses `/new` to every browser with the same page as a blocked one,
+/// which mustn't switch away from a browser it serves.
+#[test]
+#[sealed_test]
+fn test_json_path_block_keeps_the_emulation() {
+	let _ = crate::client::CLIENT.load();
+	let before = crate::client::current_emulation();
+	let _ = block_on_shared(Json.fetch("/r/rust/new.json?raw_json=1", false));
+	assert_eq!(crate::client::current_emulation(), before);
 }
 
 #[test]
