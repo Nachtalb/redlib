@@ -2,13 +2,14 @@
 
 use super::{check_json, non_json_failure, Backend, Failure, Fetch, Kind};
 use crate::client::{
-	burn_rate_limit_unit, current_emulation, fingerprint_blocked, is_fingerprint_block, reddit_get, IntoHyperResponse, OAUTH_IS_ROLLING_OVER, OAUTH_RATELIMIT_REMAINING,
+	burn_rate_limit_unit, current_emulation, fingerprint_blocked, is_fingerprint_block, now_secs, reddit_get, IntoHyperResponse, OAUTH_IS_ROLLING_OVER,
+	OAUTH_RATELIMIT_REMAINING,
 };
 use crate::oauth::force_refresh_token;
 use bytes::Buf;
 use log::{error, trace, warn};
 use serde_json::Value;
-use std::sync::atomic::Ordering;
+use std::sync::{atomic::Ordering, Mutex};
 use wreq::header as wreq_header;
 
 pub struct Json;
@@ -23,9 +24,33 @@ impl Backend for Json {
 	}
 }
 
-/// Only listings tell: threads and user pages are blocked for every fingerprint.
-fn blames_fingerprint(path: &str) -> bool {
-	Kind::of(path) == Kind::Listing
+/// A listing Reddit serves to every browser it doesn't block.
+const CONTROL: &str = "/r/popular/hot.json?raw_json=1&limit=1";
+const SERVED_SECS: u64 = 10 * 60;
+
+/// The emulation that last passed `CONTROL`, and until when that counts.
+static SERVED: Mutex<(usize, u64)> = Mutex::new((usize::MAX, 0));
+
+/// Reddit answers a blocked browser and a path it refuses to every browser
+/// with the same page, so ask for `CONTROL` before blaming the browser.
+async fn browser_blocked(emulation: usize) -> bool {
+	let now = now_secs();
+	let (served, until) = *SERVED.lock().unwrap();
+	if current_emulation() != emulation || (served == emulation && until > now) {
+		return false;
+	}
+	burn_rate_limit_unit();
+	let Ok(response) = reddit_get(CONTROL.to_string(), false).await else {
+		return false;
+	};
+	let status = response.status().as_u16();
+	let content_type = response.headers().get(wreq_header::CONTENT_TYPE).map(|v| v.as_bytes().to_vec());
+	let body = response.bytes().await.unwrap_or_default();
+	let blocked = is_fingerprint_block(status, content_type.as_deref(), &body);
+	if !blocked {
+		*SERVED.lock().unwrap() = (emulation, now + SERVED_SECS);
+	}
+	blocked
 }
 
 async fn fetch(path: &str, quarantine: bool) -> Result<Value, Failure> {
@@ -50,7 +75,7 @@ async fn fetch(path: &str, quarantine: bool) -> Result<Value, Failure> {
 	let content_type = response.headers().get(wreq_header::CONTENT_TYPE).map(|v| v.as_bytes().to_vec());
 	if status == wreq::StatusCode::FORBIDDEN && content_type.as_ref().is_some_and(|v| v.starts_with(b"text/html")) {
 		let body = response.bytes().await.unwrap_or_default();
-		if blames_fingerprint(path) && is_fingerprint_block(status.as_u16(), content_type.as_deref(), &body) {
+		if is_fingerprint_block(status.as_u16(), content_type.as_deref(), &body) && browser_blocked(emulation).await {
 			fingerprint_blocked(emulation);
 		}
 		return Err(Failure::Blocked);
@@ -102,18 +127,5 @@ async fn fetch(path: &str, quarantine: bool) -> Result<Value, Failure> {
 			error!("Got an invalid response from reddit {e}. Status code: {status}");
 			Err(non_json_failure(status.as_u16(), &e.to_string(), path))
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_only_listing_blocks_blame_the_fingerprint() {
-		assert!(blames_fingerprint("/r/rust/hot.json?raw_json=1"));
-		assert!(blames_fingerprint("/r/popular/hot.json?geo_filter=GLOBAL&raw_json=1"));
-		assert!(!blames_fingerprint("/r/rust/comments/abc123.json?raw_json=1"));
-		assert!(!blames_fingerprint("/user/spez/about.json?raw_json=1"));
 	}
 }
