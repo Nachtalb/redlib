@@ -152,17 +152,11 @@ const EMULATIONS: &[(Profile, &[Platform], u32)] = {
 };
 
 /// Known-good fingerprints for the tests, checked by `test_probe_fingerprints`.
+/// Only Safari passes both JSON and GraphQL (probe, November 2026).
 const TEST_EMULATIONS: &[(Profile, &[Platform], u32)] = {
 	use Platform::*;
 	use Profile::*;
-	&[
-		(Chrome131, &[Windows, Android], SERVED),
-		(Edge134, &[Windows], SERVED),
-		(Safari26_4, &[MacOS], SERVED),
-		(Safari18_5, &[MacOS], SERVED),
-		(SafariIos26_2, &[IOS], SERVED),
-		(Opera131, &[Windows, MacOS], SERVED),
-	]
+	&[(Safari26_4, &[MacOS], SERVED), (Safari18_5, &[MacOS], SERVED), (SafariIos26_2, &[IOS], SERVED)]
 };
 
 /// One browser emulation the client can use.
@@ -1173,7 +1167,7 @@ mod tests {
 				);
 				println!("{row}");
 				writeln!(table, "{row}").unwrap();
-				if in_tests && json != "ok" {
+				if in_tests && (json != "ok" || gql != "ok") {
 					broken.push(format!("{profile} on {platform}"));
 				}
 				// a failed token or request says nothing about the weight
