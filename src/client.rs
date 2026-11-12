@@ -87,7 +87,9 @@ const REFUSED: u32 = 1;
 const BLOCK_SECS: u64 = 6 * 60 * 60;
 
 /// Reddit blocks anonymous JSON for Chrome 132+, Edge 135+ (probe, October
-/// 2026) and every Firefox (probe, November 2026). No OkHttp: Reddit blocks most of it outright.
+/// 2026) and every Firefox (probe, November 2026), and anonymous GraphQL for
+/// Chrome 131-, Edge 134- and Opera (probe, November 2026), so only Safari
+/// passes both. No OkHttp: Reddit blocks most of it outright.
 const EMULATIONS: &[(Profile, &[Platform], u32)] = {
 	use Platform::*;
 	use Profile::*;
@@ -97,21 +99,21 @@ const EMULATIONS: &[(Profile, &[Platform], u32)] = {
 		(Chrome147, &[Windows, MacOS, Linux, Android], REFUSED),
 		(Chrome146, &[Windows, MacOS, Linux, Android], REFUSED),
 		(Chrome145, &[Windows, MacOS, Linux, Android], REFUSED),
-		(Chrome131, &[Windows, MacOS, Linux, Android], SERVED),
-		(Chrome130, &[Windows, MacOS, Linux, Android], SERVED),
-		(Chrome129, &[Windows, MacOS, Linux, Android], SERVED),
-		(Chrome128, &[Windows, MacOS, Linux, Android], SERVED),
-		(Chrome127, &[Windows, MacOS, Linux, Android], SERVED),
-		(Chrome126, &[Windows, MacOS, Linux, Android], SERVED),
-		(Chrome124, &[Windows, MacOS, Linux, Android], SERVED),
+		(Chrome131, &[Windows, MacOS, Linux, Android], REFUSED),
+		(Chrome130, &[Windows, MacOS, Linux, Android], REFUSED),
+		(Chrome129, &[Windows, MacOS, Linux, Android], REFUSED),
+		(Chrome128, &[Windows, MacOS, Linux, Android], REFUSED),
+		(Chrome127, &[Windows, MacOS, Linux, Android], REFUSED),
+		(Chrome126, &[Windows, MacOS, Linux, Android], REFUSED),
+		(Chrome124, &[Windows, MacOS, Linux, Android], REFUSED),
 		(Edge148, &[Windows, MacOS], REFUSED),
 		(Edge147, &[Windows, MacOS], REFUSED),
 		(Edge146, &[Windows, MacOS], REFUSED),
 		(Edge145, &[Windows, MacOS], REFUSED),
-		(Edge134, &[Windows, MacOS], SERVED),
-		(Edge131, &[Windows, MacOS], SERVED),
-		(Edge127, &[Windows, MacOS], SERVED),
-		(Edge122, &[Windows, MacOS], SERVED),
+		(Edge134, &[Windows, MacOS], REFUSED),
+		(Edge131, &[Windows, MacOS], REFUSED),
+		(Edge127, &[Windows, MacOS], REFUSED),
+		(Edge122, &[Windows, MacOS], REFUSED),
 		(Firefox151, &[Windows, MacOS, Linux, Android], REFUSED),
 		(Firefox150, &[Windows, MacOS, Linux, Android], REFUSED),
 		(Firefox149, &[Windows, MacOS, Linux, Android], REFUSED),
@@ -140,14 +142,14 @@ const EMULATIONS: &[(Profile, &[Platform], u32)] = {
 		(SafariIpad26_2, &[IOS], SERVED),
 		(SafariIPad26, &[IOS], SERVED),
 		(SafariIPad18, &[IOS], SERVED),
-		(Opera131, &[Windows, MacOS], SERVED),
-		(Opera130, &[Windows, MacOS], SERVED),
-		(Opera129, &[Windows, MacOS], SERVED),
-		(Opera128, &[Windows, MacOS], SERVED),
-		(Opera127, &[Windows, MacOS], SERVED),
-		(Opera126, &[Windows, MacOS], SERVED),
-		(Opera125, &[Windows, MacOS], SERVED),
-		(Opera124, &[Windows, MacOS], SERVED),
+		(Opera131, &[Windows, MacOS], REFUSED),
+		(Opera130, &[Windows, MacOS], REFUSED),
+		(Opera129, &[Windows, MacOS], REFUSED),
+		(Opera128, &[Windows, MacOS], REFUSED),
+		(Opera127, &[Windows, MacOS], REFUSED),
+		(Opera126, &[Windows, MacOS], REFUSED),
+		(Opera125, &[Windows, MacOS], REFUSED),
+		(Opera124, &[Windows, MacOS], REFUSED),
 	]
 };
 
@@ -1171,8 +1173,9 @@ mod tests {
 					broken.push(format!("{profile} on {platform}"));
 				}
 				// a failed token or request says nothing about the weight
-				if (json == "ok" || json == "blocked") && (fingerprint.weight == SERVED) != (json == "ok") {
-					surprises.push(format!("{profile} on {platform} ({weight}, json {json})"));
+				let answered = |v: &str| v == "ok" || v == "blocked" || v == "403";
+				if answered(&json) && answered(&gql) && (fingerprint.weight == SERVED) != (json == "ok" && gql == "ok") {
+					surprises.push(format!("{profile} on {platform} ({weight}, json {json}, gql {gql})"));
 				}
 			}
 		});
