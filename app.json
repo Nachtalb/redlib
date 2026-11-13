@@ -112,6 +112,12 @@
     },
     "REDLIB_DEFAULT_MORE_REPLIES_NEW_PAGE": {
         "required": false
+    },
+    "REDLIB_DEFAULT_LIGHT_THEME": {
+        "required": false
+    },
+    "REDLIB_DEFAULT_DARK_THEME": {
+        "required": false
     }
   }
 }

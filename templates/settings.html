@@ -20,7 +20,37 @@
                     <div class="prefs-group">
                         <label for="theme">Theme:</label>
                         <select name="theme" id="theme">
-                            {{ utils::options(prefs.theme, prefs.available_themes, "system") }}
+                            {% for value in prefs.available_themes %}
+                                <option value="{{ value }}" {% if prefs.theme == value.to_string() || (prefs.theme == "" && value == "system") %}selected{% endif %}>
+                                    {{ crate::utils::theme_label(value) }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="prefs-group system_theme">
+                        <label for="light_theme">Light theme:</label>
+                        <select name="light_theme" id="light_theme">
+                            <option value="" {% if prefs.light_theme == "" %}selected{% endif %}>Default</option>
+                            {% for value in prefs.available_themes %}
+                                {% if value != "system" %}
+                                    <option value="{{ value }}" {% if prefs.light_theme == value.to_string() %}selected{% endif %}>
+                                        {{ crate::utils::theme_label(value) }}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="prefs-group system_theme">
+                        <label for="dark_theme">Dark theme:</label>
+                        <select name="dark_theme" id="dark_theme">
+                            <option value="" {% if prefs.dark_theme == "" %}selected{% endif %}>Default</option>
+                            {% for value in prefs.available_themes %}
+                                {% if value != "system" %}
+                                    <option value="{{ value }}" {% if prefs.dark_theme == value.to_string() %}selected{% endif %}>
+                                        {{ crate::utils::theme_label(value) }}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
                         </select>
                     </div>
                 </fieldset>
@@ -224,6 +254,7 @@
     <br />
     <div>
         <script src="/copy.js?v={{ crate::utils::short_git_hash() }}"></script>
+        <script src="/themePreview.js?v={{ crate::utils::short_git_hash() }}"></script>
         <label for="bincode_str">Or, export/import here (be sure to save first):</label>
         <br />
         <input type="text" id="bincode_str" name="bincode_str"

@@ -177,6 +177,8 @@ Assign a default value for each user-modifiable setting by passing environment v
 | `POSTS_PER_PAGE`                    | Integer 1-100                                                                                                                                                                                                                   | 25            |
 | `MAX_COMMENT_THREAD_DEPTH`          | Unsigned integer (0 = unlimited/Reddit default)                                                                                                                                                                                 | 0             |
 | `MORE_REPLIES_NEW_PAGE`             | `["on", "off"]`                                                                                                                                                                                                                 | `off`         |
+| `LIGHT_THEME`                       | Any `THEME` except `"system"`, used by `system` in light mode (empty = built-in light)                                                                                                                                          | `""`          |
+| `DARK_THEME`                        | Any `THEME` except `"system"`, used by `system` in dark mode (empty = built-in dark)                                                                                                                                            | `""`          |
 
 ## Forward proxies
 

@@ -78,6 +78,9 @@ From upstream pull requests that are not merged upstream:
 - **Configurable source code link** in the footer ([redlib-org#568](https://github.com/redlib-org/redlib/pull/568)).
 - **Better RSS media**: images, galleries and videos render in RSS readers, and content is HTML-escaped ([redlib-org#572](https://github.com/redlib-org/redlib/pull/572)).
 - **Catppuccin themes**: Latte, Frappé, Macchiato and Mocha ([redlib-org#538](https://github.com/redlib-org/redlib/pull/538)).
+- **Light and dark theme for System**: with the System theme, any theme can be picked for the browser's light mode and another for dark mode, instead of the built-in light and dark.
+- **Theme preview**: picking a theme on the settings page shows it at once, before saving.
+- **Readable theme names** in settings, like "Gruvbox Dark" and "Catppuccin Frappé" instead of "Gruvboxdark" and "CatppuccinFrappe".
 - **Download all images of a gallery** from the post page as individual files ([redlib-org#546](https://github.com/redlib-org/redlib/pull/546)). Needs JavaScript.
 - **Post pages without a Reddit session**: the `scraped` backend takes the post from `/by_id` and scrapes the comments from the HTML Reddit serves logged-out visitors ([redlib-org#599](https://github.com/redlib-org/redlib/pull/599), used only as a fallback here). Turn it off with `REDLIB_ENABLE_SCRAPE_FALLBACK=off`. See [Scrape fallback](CONFIGURATION.md#scrape-fallback).
 
@@ -156,6 +159,7 @@ Each has an instance default via `REDLIB_DEFAULT_<NAME>`:
 | Posts per page | `REDLIB_DEFAULT_POSTS_PER_PAGE` | `25` |
 | Max comment thread depth | `REDLIB_DEFAULT_MAX_COMMENT_THREAD_DEPTH` | `0` (unlimited) |
 | Always open replies in thread view | `REDLIB_DEFAULT_MORE_REPLIES_NEW_PAGE` | `off` |
+| Light theme, dark theme (for the System theme) | `REDLIB_DEFAULT_LIGHT_THEME`, `REDLIB_DEFAULT_DARK_THEME` | empty (built-in light/dark) |
 
 All of them are documented in [CONFIGURATION.md](CONFIGURATION.md), `.env.example` and `app.json`.
 
@@ -165,7 +169,7 @@ Settings codes (Settings → export / restore) now carry a format revision:
 
 - **New codes** start with a marker byte and are revisioned. A code exported before a setting existed restores that setting to its default.
 - **Old codes** from upstream Redlib still restore. Settings they don't contain get their defaults.
-- Settings added in this fork belong to revision 2, except "Always open replies in thread view" in revision 3: revision 2 codes were already in use, and a new field in revision 2 would stop them from restoring.
+- Settings added in this fork belong to revision 2, except "Always open replies in thread view" in revision 3 and the light and dark theme in revision 4: older revisions' codes were already in use, and a new field in them would stop those codes from restoring.
 
 Codes exported from this fork can't be restored on upstream Redlib.
 

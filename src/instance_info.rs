@@ -153,6 +153,8 @@ impl InstanceInfo {
 				["Hide awards", &effective(&self.config.default_hide_awards, "off")],
 				["Hide score", &effective(&self.config.default_hide_score, "off")],
 				["Theme", &effective(&self.config.default_theme, "system")],
+				["Light theme", &effective(&self.config.default_light_theme, "default")],
+				["Dark theme", &effective(&self.config.default_dark_theme, "default")],
 				["Front page", &effective(&self.config.default_front_page, "default")],
 				["Layout", &effective(&self.config.default_layout, "card")],
 				["Wide", &effective(&self.config.default_wide, "off")],

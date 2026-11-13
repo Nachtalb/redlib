@@ -119,7 +119,16 @@ async fn style() -> Result<Response<Body>, String> {
 	for file in ThemeAssets::iter() {
 		res.push('\n');
 		let theme = ThemeAssets::get(file.as_ref()).unwrap();
-		res.push_str(std::str::from_utf8(theme.data.as_ref()).unwrap());
+		let css = std::str::from_utf8(theme.data.as_ref()).unwrap();
+		res.push_str(css);
+		// `light-<theme>` and `dark-<theme>`: the theme only while the browser is in that scheme
+		let name = file.trim_end_matches(".css");
+		for scheme in ["light", "dark"] {
+			let scoped = css
+				.replace(&format!(".{name} "), &format!(".{scheme}-{name} "))
+				.replace(&format!(".{name})"), &format!(".{scheme}-{name})"));
+			res.push_str(&format!("\n@media (prefers-color-scheme: {scheme}) {{\n{scoped}}}\n"));
+		}
 	}
 	Ok(
 		Response::builder()
@@ -290,6 +299,9 @@ async fn main() {
 		.at("/check_update.js")
 		.get(|_| resource(include_str!("../static/check_update.js"), "text/javascript", false).boxed());
 	app.at("/copy.js").get(|_| resource(include_str!("../static/copy.js"), "text/javascript", false).boxed());
+	app
+		.at("/themePreview.js")
+		.get(|_| resource(include_str!("../static/themePreview.js"), "text/javascript", false).boxed());
 	app
 		.at("/static/keyboardcommands.js")
 		.get(|_| resource(include_str!("../static/keyboardcommands.js"), "text/javascript", false).boxed());
