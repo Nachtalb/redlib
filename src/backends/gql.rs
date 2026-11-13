@@ -12,8 +12,9 @@ use crate::utils::{enable_gql, format_url, gql_feed_requests, param};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::DateTime;
 use log::{debug, warn};
-use regex::Regex;
+use regex::{Captures, Regex};
 use serde_json::{json as json_value, Value};
+use std::collections::HashMap;
 use std::sync::LazyLock;
 
 pub(crate) const GQL_URL: &str = "https://gql-fed.reddit.com/";
@@ -635,8 +636,67 @@ fn wiki_json(node: &Value, sub: &str) -> Result<Value, String> {
 	let content = &page["content"];
 	let richtext: Value = content["richtext"].as_str().and_then(|r| serde_json::from_str(r).ok()).unwrap_or_default();
 	Ok(json_value!({ "kind": "wikipage", "data": {
-		"content_html": format!("<div class=\"md wiki\">{}</div>", render(&richtext["document"], &content["richtextMedia"])),
+		"content_html": format!("<div class=\"md wiki\">{}</div>", wiki_toc(&render(&richtext["document"], &content["richtextMedia"]))),
 	} }))
+}
+
+static HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<h([1-6])>(.*?)</h[1-6]>").unwrap());
+static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
+
+/// Gives the headings the ids Reddit's wiki gives them and puts its table of
+/// contents in front, nested like Reddit nests it.
+fn wiki_toc(html: &str) -> String {
+	let mut seen: HashMap<String, usize> = HashMap::new();
+	// The open lists of the table of contents, with the heading level each started at
+	let mut lists: Vec<(usize, String)> = vec![(0, String::new())];
+	let mut previous = 0;
+	let body = HEADING.replace_all(html, |caps: &Captures| {
+		let text = htmlescape::decode_html(&TAG.replace_all(&caps[2], "")).unwrap_or_default();
+		if text.is_empty() {
+			return caps[0].to_string();
+		}
+		let mut id = "wiki_".to_string();
+		for byte in text.replace(' ', "_").to_lowercase().bytes() {
+			match byte {
+				b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'.' | b'-' => id.push(byte as char),
+				_ => id += &format!(".{byte:02X}"),
+			}
+		}
+		let count = seen.entry(id.clone()).or_default();
+		*count += 1;
+		if *count > 1 {
+			id += &count.to_string();
+		}
+
+		let level = caps[1].parse().unwrap_or(1);
+		if previous != 0 && level > previous {
+			lists.push((level, String::new()));
+		} else {
+			while lists.len() > 1 && lists.last().is_some_and(|(l, _)| *l > level) {
+				close_toc_list(&mut lists);
+			}
+		}
+		previous = level;
+		if let Some((_, list)) = lists.last_mut() {
+			*list += &format!("<li class=\"{id}\"><a href=\"#{id}\">{}</a></li>", htmlescape::encode_minimal(&text));
+		}
+		format!("<h{level} id=\"{id}\">{}</h{level}>", &caps[2])
+	});
+	if previous == 0 {
+		return html.to_string();
+	}
+	while lists.len() > 1 {
+		close_toc_list(&mut lists);
+	}
+	format!("<div class=\"toc\"><ul>{}</ul></div>{body}", lists[0].1)
+}
+
+fn close_toc_list(lists: &mut Vec<(usize, String)>) {
+	if let Some((_, list)) = lists.pop() {
+		if let Some((_, parent)) = lists.last_mut() {
+			*parent += &format!("<li class=\"toc_child\"><ul>{list}</ul></li>");
+		}
+	}
 }
 
 const DYNAMIC_SEARCH_HASH: &str = "4acac653e5aac2ae2f08114d07ba7582e852464a57e324547c259ea3ef2ebd40";
@@ -1390,6 +1450,24 @@ mod tests {
 		);
 		let lines = json_value!([{ "e": "par", "c": [line("a | b"), br, line("c")] }]);
 		assert_eq!(render(&lines, &Value::Null), "<p>a | b<br>c</p>");
+	}
+
+	#[test]
+	fn test_wiki_toc() {
+		let html = "<h1>Intro: A/B</h1><p>x</p><h2>Sub</h2><h3>Deep</h3><h2>Sub</h2><h1>Ünï &amp; co</h1>";
+		assert_eq!(
+			wiki_toc(html),
+			concat!(
+				r##"<div class="toc"><ul><li class="wiki_intro.3A_a.2Fb"><a href="#wiki_intro.3A_a.2Fb">Intro: A/B</a></li>"##,
+				r##"<li class="toc_child"><ul><li class="wiki_sub"><a href="#wiki_sub">Sub</a></li>"##,
+				r##"<li class="toc_child"><ul><li class="wiki_deep"><a href="#wiki_deep">Deep</a></li></ul></li>"##,
+				r##"<li class="wiki_sub2"><a href="#wiki_sub2">Sub</a></li></ul></li>"##,
+				r##"<li class="wiki_.C3.BCn.C3.AF_.26_co"><a href="#wiki_.C3.BCn.C3.AF_.26_co">Ünï &amp; co</a></li></ul></div>"##,
+				r##"<h1 id="wiki_intro.3A_a.2Fb">Intro: A/B</h1><p>x</p><h2 id="wiki_sub">Sub</h2><h3 id="wiki_deep">Deep</h3>"##,
+				r##"<h2 id="wiki_sub2">Sub</h2><h1 id="wiki_.C3.BCn.C3.AF_.26_co">Ünï &amp; co</h1>"##,
+			)
+		);
+		assert_eq!(wiki_toc("<p>no headings</p>"), "<p>no headings</p>");
 	}
 
 	#[test]
