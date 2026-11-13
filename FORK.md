@@ -74,7 +74,7 @@ From upstream pull requests that are not merged upstream:
 - **Keyboard navigation** on post pages ([redlib-org#422](https://github.com/redlib-org/redlib/pull/422)): `j` / `k` next / previous comment, `t` / `p` next / previous thread, `Enter` open the post link, `Shift+Enter` open it in a new tab.
 - **Collapse a comment** by clicking its indent line ([redlib-org#291](https://github.com/redlib-org/redlib/pull/291)).
 - **Lazy-loaded post images** ([redlib-org#539](https://github.com/redlib-org/redlib/pull/539)).
-- **r/popular region** (the geo filter) as a user setting instead of a URL parameter ([redlib-org#566](https://github.com/redlib-org/redlib/pull/566)), with country flags and names in the dropdown. Only Reddit's JSON API applies it, so with a region set r/popular is asked from `json` first, and a bar at the top says when another backend served the global feed instead.
+- **r/popular region** (the geo filter) as a user setting instead of a URL parameter ([redlib-org#566](https://github.com/redlib-org/redlib/pull/566)), with country flags, and each country named in its own language with the English name after it, sorted by the native name. Only Reddit's JSON API applies it, so with a region set r/popular is asked from `json` first, and a bar at the top says when another backend served the global feed instead.
 - **Configurable source code link** in the footer ([redlib-org#568](https://github.com/redlib-org/redlib/pull/568)).
 - **Better RSS media**: images, galleries and videos render in RSS readers, and content is HTML-escaped ([redlib-org#572](https://github.com/redlib-org/redlib/pull/572)).
 - **Catppuccin themes**: Latte, Frappé, Macchiato and Mocha ([redlib-org#538](https://github.com/redlib-org/redlib/pull/538)).
