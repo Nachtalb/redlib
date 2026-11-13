@@ -137,7 +137,7 @@ While running, Redlib reorders the listed backends by how often each worked in t
 | `SUBREDDIT`  | ✅         | ✅             | ✅    | ❌        | gql, json, cookied-json |
 | `USER`       | ⚠️ blocked | ✅             | ✅    | ❌        | gql, cookied-json |
 | `SEARCH`     | ✅         | ✅             | ✅    | ❌        | gql, json, cookied-json |
-| `WIKI`       | ✅         | ✅             | ❌    | ❌        | json, cookied-json |
+| `WIKI`       | ⚠️ blocked | ✅             | ✅    | ❌        | gql, cookied-json |
 | `DUPLICATES` | ✅         | ✅             | ❌    | ❌        | json, cookied-json |
 
 ¹ Skipped without a request for feeds of several subreddits (`r/a+b`, the front page of your subscriptions).
