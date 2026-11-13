@@ -44,7 +44,7 @@ static NEXT_SESSION: AtomicUsize = AtomicUsize::new(0);
 /// emulation, so switch to another one and try once more with the sessions
 /// that still have budget.
 async fn fetch(path: &str) -> Result<Value, Failure> {
-	let path = &*session_path(path);
+	let path = &*Kind::json_path(path);
 	let mut response = web_session_get(path).await;
 	if let Err(refused) = response {
 		if worth_a_new_browser(path, refused) && reroll_client("Reddit refused every session") {
@@ -72,14 +72,6 @@ fn reddit_error(status: u16, json: &Value, path: &str) -> Failure {
 	let reason = json["reason"].as_str().unwrap_or("no reason");
 	let message = json["message"].as_str().unwrap_or_default();
 	Failure::Final(format!("Reddit error {status} {reason}: {message} | {path}"))
-}
-
-/// The API reads the bare `+` of `r/all+` as a space for a session's token; anonymous requests need it bare.
-fn session_path(path: &str) -> std::borrow::Cow<'_, str> {
-	match Kind::json_path(path) {
-		std::borrow::Cow::Owned(all) => all.replacen("/r/all+", "/r/all%2B", 1).into(),
-		same => same,
-	}
 }
 
 fn is_json(response: &WreqResponse) -> bool {
@@ -432,7 +424,7 @@ mod tests {
 			"/r/rust.json?raw_json=1",
 			"/r/rust/top.json?t=week&raw_json=1",
 			"/r/popular/hot.json?geo_filter=GLOBAL&raw_json=1",
-			"/r/all+/hot.json?raw_json=1",
+			"/r/all%2B/hot.json?raw_json=1",
 			"/search.json?q=rust&raw_json=1",
 			"/r/rust/search.json?q=async&restrict_sr=on&raw_json=1",
 			"/r/rust/api/widgets?raw_json=1",
@@ -447,7 +439,7 @@ mod tests {
 			"/r/redditdev/comments/1wubcvf.json?raw_json=1",
 			"/by_id/t3_1wubcvf.json?raw_json=1",
 			"/r/rust/new.json?raw_json=1",
-			"/r/all+/new.json?raw_json=1",
+			"/r/all%2B/new.json?raw_json=1",
 			"/r/rust/about.json?raw_json=1",
 			"/user/spez/about.json?raw_json=1",
 			"/r/rust/wiki/index.json?raw_json=1",
@@ -566,13 +558,6 @@ mod tests {
 			.insert("reddit_session=loop-notoken".into(), (None, u64::MAX));
 		let (_, calls) = ask("/r/rust/hot.json?raw_json=1", &["loop-notoken"], |_, _| answer(200, &[]));
 		assert_eq!(calls, [(Host::Web, "loop-notoken".into())]);
-	}
-
-	#[test]
-	fn test_sessions_get_r_all_with_an_encoded_plus() {
-		assert_eq!(session_path("/r/all/hot.json?raw_json=1"), "/r/all%2B/hot.json?raw_json=1");
-		assert_eq!(session_path("/r/all.json?raw_json=1"), "/r/all%2B.json?raw_json=1");
-		assert_eq!(session_path("/r/rust/hot.json?raw_json=1"), "/r/rust/hot.json?raw_json=1");
 	}
 
 	#[test]

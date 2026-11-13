@@ -75,7 +75,7 @@ pub enum Kind {
 	Comments,
 	/// Posts of a subreddit, popular and the front page.
 	Listing,
-	/// r/all, which Reddit retired; JSON still serves it as `r/all+`.
+	/// r/all, which Reddit retired; JSON still serves it as `r/all%2B`.
 	All,
 	/// Subreddit info (`/r/<sub>/about`).
 	Subreddit,
@@ -131,10 +131,11 @@ impl Kind {
 	}
 
 	/// The JSON API path for `path`: Reddit answers `/r/all` with 403 but
-	/// still serves the same feed as the "multireddit" `/r/all+`.
+	/// still serves the same feed as the "multireddit" `/r/all%2B`. A bare `+`
+	/// reads as a space and gets a fixed copy of r/popular's first page.
 	pub fn json_path(path: &str) -> std::borrow::Cow<'_, str> {
 		match path.strip_prefix("/r/all") {
-			Some(rest) if Self::of(path) == Self::All => format!("/r/all+{rest}").into(),
+			Some(rest) if Self::of(path) == Self::All => format!("/r/all%2B{rest}").into(),
 			_ => path.into(),
 		}
 	}
@@ -444,8 +445,8 @@ mod tests {
 
 	#[test]
 	fn test_json_path() {
-		assert_eq!(Kind::json_path("/r/all/new.json?raw_json=1"), "/r/all+/new.json?raw_json=1");
-		assert_eq!(Kind::json_path("/r/all.json?raw_json=1"), "/r/all+.json?raw_json=1");
+		assert_eq!(Kind::json_path("/r/all/new.json?raw_json=1"), "/r/all%2B/new.json?raw_json=1");
+		assert_eq!(Kind::json_path("/r/all.json?raw_json=1"), "/r/all%2B.json?raw_json=1");
 		for path in ["/r/allthingsdnd/hot.json", "/r/all/search.json?q=rust", "/r/all/about.json", "/r/rust/hot.json"] {
 			assert_eq!(Kind::json_path(path), path);
 		}
