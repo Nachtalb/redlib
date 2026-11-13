@@ -50,7 +50,7 @@
     <input type="checkbox" name="wide" id="wide" {% if prefs.wide=="on" %}checked{% endif %}>
 </div>
 <div class="prefs-group">
-    <label for="geo_filter">Geo Filter:</label>
+    <label for="geo_filter">r/Popular region:</label>
     <select name="geo_filter" id="geo_filter">
         {% for (code, label) in self::GEO_FILTERS %}
             <option value="{{ code }}" {% if prefs.geo_filter == code.to_string() %}selected{% endif %}>{{ label }}</option>

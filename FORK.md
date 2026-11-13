@@ -151,7 +151,7 @@ Each has an instance default via `REDLIB_DEFAULT_<NAME>`:
 
 | Setting | Variable | Default |
 |---|---|---|
-| Geo filter | `REDLIB_DEFAULT_GEO_FILTER` | `GLOBAL` |
+| r/Popular region | `REDLIB_DEFAULT_GEO_FILTER` | `GLOBAL` |
 | Clean URLs | `REDLIB_DEFAULT_CLEAN_URLS` | `off` |
 | Posts per page | `REDLIB_DEFAULT_POSTS_PER_PAGE` | `25` |
 | Max comment thread depth | `REDLIB_DEFAULT_MAX_COMMENT_THREAD_DEPTH` | `0` (unlimited) |
