@@ -997,7 +997,7 @@ fn element(node: &Value, media: &Value) -> String {
 			let title = node["a"].as_str().map(|a| format!(" title=\"{}\"", htmlescape::encode_minimal(a))).unwrap_or_default();
 			format!("<a href=\"{}\"{title}>{}</a>", url_attr(node["u"].as_str()), formatted(node))
 		}
-		kind @ ("r/" | "u/") => {
+		kind @ ("r/" | "u/" | "p/" | "c/") => {
 			let name = htmlescape::encode_minimal(node["t"].as_str().unwrap_or_default());
 			let slash = if node["l"] == true { "/" } else { "" };
 			format!("<a href=\"/{kind}{name}\">{slash}{kind}{name}</a>")
@@ -1007,7 +1007,11 @@ fn element(node: &Value, media: &Value) -> String {
 				return String::new();
 			};
 			let src = url_attr(item["url"].as_str());
-			format!("<figure><a href=\"{src}\"><img src=\"{src}\" loading=\"lazy\"></a></figure>")
+			let caption = node["c"]
+				.as_str()
+				.map(|c| format!("<figcaption>{}</figcaption>", htmlescape::encode_minimal(c)))
+				.unwrap_or_default();
+			format!("<figure><a href=\"{src}\"><img src=\"{src}\" loading=\"lazy\"></a>{caption}</figure>")
 		}
 		"table" => table(node, media),
 		// Unknown elements: keep their content
@@ -1017,7 +1021,16 @@ fn element(node: &Value, media: &Value) -> String {
 }
 
 /// RTJSON format bits and their tags
-const FORMATS: [(u64, &str); 6] = [(1, "strong"), (2, "em"), (8, "del"), (16, "sub"), (32, "sup"), (64, "code")];
+const FORMATS: [(u64, &str); 8] = [
+	(1, "strong"),
+	(2, "em"),
+	(4, "u"),
+	(8, "del"),
+	(16, "sub"),
+	(32, "sup"),
+	(64, "code"),
+	(128, "span class=\"md-spoiler-text\""),
+];
 
 /// Text with format ranges (`[bits, start, length]` in characters) as HTML.
 fn formatted(node: &Value) -> String {
@@ -1039,7 +1052,7 @@ fn formatted(node: &Value) -> String {
 		let tags: Vec<&str> = FORMATS.iter().filter(|(bit, _)| bits[start] & bit != 0).map(|(_, tag)| *tag).collect();
 		tags.iter().for_each(|tag| out += &format!("<{tag}>"));
 		out += &htmlescape::encode_minimal(&text[start..end].iter().collect::<String>());
-		tags.iter().rev().for_each(|tag| out += &format!("</{tag}>"));
+		tags.iter().rev().for_each(|tag| out += &format!("</{}>", tag.split(' ').next().unwrap_or(tag)));
 		start = end;
 	}
 	out
@@ -1284,6 +1297,24 @@ mod tests {
 	fn test_render_heading_closing_hashes() {
 		let doc = json_value!([{ "e": "h", "l": 2, "c": [{ "e": "raw", "t": "Rules ##" }] }, { "e": "h", "l": 3, "c": [{ "e": "raw", "t": "C#" }] }]);
 		assert_eq!(render(&doc, &Value::Null), "<h2>Rules</h2><h3>C</h3>");
+	}
+
+	#[test]
+	fn test_render_app_formats() {
+		let doc = json_value!([{ "e": "par", "c": [
+			{ "e": "text", "t": "us", "f": [[4, 0, 1], [128, 1, 1]] },
+			{ "e": "p/", "t": "x", "l": false },
+			{ "e": "c/", "t": "y", "l": true },
+			{ "e": "img", "id": "i", "c": "cap <1>" },
+		]}]);
+		let media = json_value!([{ "id": "i", "url": "https://i.redd.it/i.png" }]);
+		assert_eq!(
+			render(&doc, &media),
+			concat!(
+				r#"<p><u>u</u><span class="md-spoiler-text">s</span><a href="/p/x">p/x</a><a href="/c/y">/c/y</a>"#,
+				r#"<figure><a href="/img/i.png"><img src="/img/i.png" loading="lazy"></a><figcaption>cap &lt;1&gt;</figcaption></figure></p>"#,
+			)
+		);
 	}
 
 	#[test]
