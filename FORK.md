@@ -79,6 +79,7 @@ From upstream pull requests that are not merged upstream:
 - **Better RSS media**: images, galleries and videos render in RSS readers, and content is HTML-escaped ([redlib-org#572](https://github.com/redlib-org/redlib/pull/572)).
 - **Catppuccin themes**: Latte, Frappé, Macchiato and Mocha ([redlib-org#538](https://github.com/redlib-org/redlib/pull/538)).
 - **Light and dark theme for System**: with the System theme, any theme can be picked for the browser's light mode and another for dark mode, instead of the built-in light and dark.
+- **Readable theme names** in settings, like "Gruvbox Dark" and "Catppuccin Frappé" instead of "Gruvboxdark" and "CatppuccinFrappe".
 - **Download all images of a gallery** from the post page as individual files ([redlib-org#546](https://github.com/redlib-org/redlib/pull/546)). Needs JavaScript.
 - **Post pages without a Reddit session**: the `scraped` backend takes the post from `/by_id` and scrapes the comments from the HTML Reddit serves logged-out visitors ([redlib-org#599](https://github.com/redlib-org/redlib/pull/599), used only as a fallback here). Turn it off with `REDLIB_ENABLE_SCRAPE_FALLBACK=off`. See [Scrape fallback](CONFIGURATION.md#scrape-fallback).
 

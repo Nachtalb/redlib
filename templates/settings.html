@@ -20,7 +20,11 @@
                     <div class="prefs-group">
                         <label for="theme">Theme:</label>
                         <select name="theme" id="theme">
-                            {{ utils::options(prefs.theme, prefs.available_themes, "system") }}
+                            {% for value in prefs.available_themes %}
+                                <option value="{{ value }}" {% if prefs.theme == value.to_string() || (prefs.theme == "" && value == "system") %}selected{% endif %}>
+                                    {{ crate::utils::theme_label(value) }}
+                                </option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="prefs-group system_theme">
@@ -30,7 +34,7 @@
                             {% for value in prefs.available_themes %}
                                 {% if value != "system" %}
                                     <option value="{{ value }}" {% if prefs.light_theme == value.to_string() %}selected{% endif %}>
-                                        {{ format!("{}{}", value.get(0..1).unwrap_or_default().to_uppercase(), value.get(1..).unwrap_or_default()) }}
+                                        {{ crate::utils::theme_label(value) }}
                                     </option>
                                 {% endif %}
                             {% endfor %}
@@ -43,7 +47,7 @@
                             {% for value in prefs.available_themes %}
                                 {% if value != "system" %}
                                     <option value="{{ value }}" {% if prefs.dark_theme == value.to_string() %}selected{% endif %}>
-                                        {{ format!("{}{}", value.get(0..1).unwrap_or_default().to_uppercase(), value.get(1..).unwrap_or_default()) }}
+                                        {{ crate::utils::theme_label(value) }}
                                     </option>
                                 {% endif %}
                             {% endfor %}

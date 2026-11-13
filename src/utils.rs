@@ -1785,6 +1785,36 @@ pub fn get_source_url() -> String {
 	get_setting("REDLIB_SOURCE_URL").unwrap_or("https://github.com/Nachtalb/redlib".into())
 }
 
+/// Display name of a theme; its id stays the file name.
+pub fn theme_label(theme: &str) -> &str {
+	match theme {
+		"system" => "System",
+		"black" => "Black",
+		"catppuccinFrappe" => "Catppuccin Frappé",
+		"catppuccinLatte" => "Catppuccin Latte",
+		"catppuccinMacchiato" => "Catppuccin Macchiato",
+		"catppuccinMocha" => "Catppuccin Mocha",
+		"dark" => "Dark",
+		"doomone" => "Doom One",
+		"dracula" => "Dracula",
+		"gold" => "Gold",
+		"gruvboxdark" => "Gruvbox Dark",
+		"gruvboxlight" => "Gruvbox Light",
+		"icebergDark" => "Iceberg Dark",
+		"laserwave" => "LaserWave",
+		"libredditBlack" => "Libreddit Black",
+		"libredditDark" => "Libreddit Dark",
+		"libredditLight" => "Libreddit Light",
+		"light" => "Light",
+		"midnightPurple" => "Midnight Purple",
+		"nord" => "Nord",
+		"rosebox" => "Rosebox",
+		"tokyoNight" => "Tokyo Night",
+		"violet" => "Violet",
+		_ => theme,
+	}
+}
+
 pub fn short_git_hash() -> &'static str {
 	let hash = env!("GIT_HASH").trim();
 	hash.get(..7).unwrap_or(hash)
@@ -2429,6 +2459,14 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 			let bytes = base2048::decode(config).unwrap();
 			let decompressed = deflate_decompress(bytes).unwrap();
 			assert!(Preferences::from_bincode(&decompressed).is_ok());
+		}
+	}
+
+	#[test]
+	fn test_every_theme_has_a_label() {
+		for file in super::ThemeAssets::iter() {
+			let theme = file.trim_end_matches(".css");
+			assert_ne!(super::theme_label(theme), theme, "add {theme} to theme_label");
 		}
 	}
 
