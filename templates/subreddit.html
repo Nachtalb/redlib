@@ -92,7 +92,7 @@
                         <summary id="subreddit_label">Subreddit</summary>
                         {% if sub.wiki %}
                             <div id="top">
-                                <div>Posts</div>
+                                <a href="/r/{{ sub.name }}" class="active">Posts</a>
                                 <a href="/r/{{ sub.name }}/wiki/index">Wiki</a>
                             </div>
                         {% endif %}
