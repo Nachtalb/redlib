@@ -300,6 +300,9 @@ async fn main() {
 		.get(|_| resource(include_str!("../static/check_update.js"), "text/javascript", false).boxed());
 	app.at("/copy.js").get(|_| resource(include_str!("../static/copy.js"), "text/javascript", false).boxed());
 	app
+		.at("/themePreview.js")
+		.get(|_| resource(include_str!("../static/themePreview.js"), "text/javascript", false).boxed());
+	app
 		.at("/static/keyboardcommands.js")
 		.get(|_| resource(include_str!("../static/keyboardcommands.js"), "text/javascript", false).boxed());
 	app
