@@ -56,6 +56,7 @@ Bugs present in upstream Redlib that are fixed here:
 - **`REDLIB_ENABLE_RSS=off` still served feeds**: any value turned feeds on, while the RSS buttons only showed for `on`. Feeds now need `on` ([#16](https://github.com/Nachtalb/redlib/pull/16)).
 - **RSS feeds for `r/popular` and `r/all` failed** with a Reddit 404: they have no subreddit metadata to fetch ([#16](https://github.com/Nachtalb/redlib/pull/16)).
 - **r/all showed the same page after Next**: Reddit answers a bare `/r/all+.json` with a fixed copy of r/popular's first page, so it is requested as `/r/all%2B.json`, which pages and sorts.
+- **Top and controversial showed all-time posts** while the timeframe menu said "day": Reddit's API reads a missing `t` as all time, so `t=day` is sent when the URL has none, as on reddit.com.
 - **RSS text was escaped or decoded wrongly**: subreddit feed titles showed `&amp;` for `&`, and user feeds turned escaped text like `Vec&lt;T&gt;` into markup that readers hid ([#16](https://github.com/Nachtalb/redlib/pull/16)).
 - **Shutdown cut off running downloads**: on SIGTERM or Ctrl+C, the server now finishes in-flight requests before exiting.
 - **One number or boolean in `redlib.toml` dropped the whole file** without a message, e.g. `REDLIB_SCRAPE_COMMENT_PREFETCH = 0`. Numbers are read as text and booleans as `on`/`off`, and a file that still can't be read is logged ([#46](https://github.com/Nachtalb/redlib/issues/46)).
