@@ -12,7 +12,9 @@ use crate::utils::{enable_gql, format_url, gql_feed_requests, param};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::DateTime;
 use log::{debug, warn};
+use regex::Regex;
 use serde_json::{json as json_value, Value};
+use std::sync::LazyLock;
 
 pub(crate) const GQL_URL: &str = "https://gql-fed.reddit.com/";
 
@@ -971,7 +973,7 @@ fn element(node: &Value, media: &Value) -> String {
 	match node["e"].as_str().unwrap_or_default() {
 		// A paragraph of only images is a figure, like the JSON API's
 		"par" if node["c"].as_array().is_some_and(|c| c.iter().all(|c| matches!(c["e"].as_str(), Some("img" | "gif")))) => children(),
-		"par" => format!("<p>{}</p>", children()),
+		"par" => pipe_table(node, media).unwrap_or_else(|| format!("<p>{}</p>", children())),
 		"text" => formatted(node),
 		"br" => "<br>".to_string(),
 		"hr" => "<hr>".to_string(),
@@ -1056,6 +1058,58 @@ fn formatted(node: &Value) -> String {
 		start = end;
 	}
 	out
+}
+
+static TABLE_RULE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\|?(\s*:?-+:?\s*\|)+(\s*:?-+:?\s*)?$").unwrap());
+
+/// A markdown table richtext left as a paragraph of `|` lines (it does so in
+/// quotes), rendered as the table Reddit's HTML has.
+fn pipe_table(node: &Value, media: &Value) -> Option<String> {
+	let children = node["c"].as_array()?;
+	let lines: Vec<&[Value]> = children.split(|c| c["e"] == "br").collect();
+	let text = |line: &[Value]| line.iter().map(|c| c["t"].as_str().unwrap_or_default()).collect::<String>().trim().to_string();
+	if lines.len() < 2 || !text(lines[0]).contains('|') || !TABLE_RULE.is_match(&text(lines[1])) {
+		return None;
+	}
+	let cells = |line: &[Value]| -> Vec<String> {
+		let html = render(&Value::from(line.to_vec()), media);
+		let html = html.trim();
+		let html = html.strip_prefix('|').unwrap_or(html);
+		let html = html.strip_suffix('|').unwrap_or(html);
+		html.split('|').map(|cell| cell.trim().to_string()).collect()
+	};
+	let aligns: Vec<&str> = text(lines[1])
+		.trim_matches('|')
+		.split('|')
+		.map(|rule| match (rule.trim().starts_with(':'), rule.trim().ends_with(':')) {
+			(true, true) => " align=\"center\"",
+			(false, true) => " align=\"right\"",
+			(true, false) => " align=\"left\"",
+			_ => "",
+		})
+		.collect();
+	let row = |cells: &[String], tag: &str| -> String {
+		let cells: String = cells
+			.iter()
+			.enumerate()
+			.map(|(i, cell)| format!("<{tag}{}>{cell}</{tag}>", aligns.get(i).unwrap_or(&"")))
+			.collect();
+		format!("<tr>{cells}</tr>")
+	};
+	let head = cells(lines[0]);
+	let mut body = String::new();
+	for line in lines[2..].iter().filter(|line| !text(line).is_empty()) {
+		let mut cells = cells(line);
+		// Rows richtext joined into one line come as `a | b | | c | d`
+		while cells.len() > head.len() && cells[head.len()].is_empty() {
+			let rest = cells.split_off(head.len() + 1);
+			cells.truncate(head.len());
+			body += &row(&cells, "td");
+			cells = rest;
+		}
+		body += &row(&cells, "td");
+	}
+	Some(format!("<table><thead>{}</thead><tbody>{body}</tbody></table>", row(&head, "th")))
 }
 
 fn table(node: &Value, media: &Value) -> String {
@@ -1315,6 +1369,27 @@ mod tests {
 				r#"<figure><a href="/img/i.png"><img src="/img/i.png" loading="lazy"></a><figcaption>cap &lt;1&gt;</figcaption></figure></p>"#,
 			)
 		);
+	}
+
+	#[test]
+	fn test_render_pipe_table() {
+		let line = |t: &str| json_value!({ "e": "text", "t": t });
+		let br = json_value!({ "e": "br" });
+		let doc = json_value!([{ "e": "par", "c": [
+			line("| A | B |"), br.clone(), line("|:-|-:|"), br.clone(),
+			line("| "), { "e": "link", "t": "x", "u": "https://example.com" }, line(" | 1 | | y | 2 |"), br.clone(), line("| z | 3 |"),
+		]}]);
+		assert_eq!(
+			render(&doc, &Value::Null),
+			concat!(
+				r#"<table><thead><tr><th align="left">A</th><th align="right">B</th></tr></thead><tbody>"#,
+				r#"<tr><td align="left"><a href="https://example.com">x</a></td><td align="right">1</td></tr>"#,
+				r#"<tr><td align="left">y</td><td align="right">2</td></tr>"#,
+				r#"<tr><td align="left">z</td><td align="right">3</td></tr></tbody></table>"#,
+			)
+		);
+		let lines = json_value!([{ "e": "par", "c": [line("a | b"), br, line("c")] }]);
+		assert_eq!(render(&lines, &Value::Null), "<p>a | b<br>c</p>");
 	}
 
 	#[test]
