@@ -142,7 +142,7 @@ While running, Redlib reorders the listed backends by how often each worked in t
 
 ¹ Skipped without a request for feeds of several subreddits (`r/a+b`, the front page of your subscriptions).
 
-² Reddit [retired r/all](https://www.reddit.com/r/reddithelp/comments/1rfmh8h/a_helpful_link_to_rall/) and answers `/r/all.json` with 403, but still serves the same feed as `/r/all+.json`, which is requested instead.
+² Reddit [retired r/all](https://www.reddit.com/r/reddithelp/comments/1rfmh8h/a_helpful_link_to_rall/) and answers `/r/all.json` with 403, but still serves the same feed as `/r/all%2B.json`, which is requested instead. A bare `/r/all+.json` gets a fixed copy of r/popular's first page.
 
 ³ The old GraphQL feed sends about 8 posts per request, so a page takes up to `REDLIB_GQL_FEED_REQUESTS` requests.
 
