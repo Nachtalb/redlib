@@ -778,12 +778,14 @@ impl LegacyPreferences {
 			posts_per_page: defaults(Preferences::default_instance_setting),
 			max_comment_thread_depth: defaults(Preferences::default_instance_setting),
 			more_replies_new_page: defaults(Preferences::default_off),
+			light_theme: String::new(),
+			dark_theme: String::new(),
 		})
 	}
 }
 
 #[derive(Default, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[revisioned(revision = 3)]
+#[revisioned(revision = 4)]
 pub struct Preferences {
 	#[revision(start = 1)]
 	#[serde(skip_serializing, skip_deserializing)]
@@ -843,6 +845,11 @@ pub struct Preferences {
 	// Revision 2 codes are already out there, so new fields can't join it.
 	#[revision(start = 3, default_fn = "default_off")]
 	pub more_replies_new_page: String,
+	/// Themes the "system" theme switches between; empty = built-in light or dark.
+	#[revision(start = 4, default_fn = "default_instance_setting")]
+	pub light_theme: String,
+	#[revision(start = 4, default_fn = "default_instance_setting")]
+	pub dark_theme: String,
 }
 
 fn serialize_vec_with_plus<S>(vec: &[String], serializer: S) -> Result<S::Ok, S::Error>
@@ -906,6 +913,8 @@ impl Preferences {
 			posts_per_page: setting(req, "posts_per_page"),
 			max_comment_thread_depth: setting(req, "max_comment_thread_depth"),
 			more_replies_new_page: setting(req, "more_replies_new_page"),
+			light_theme: setting(req, "light_theme"),
+			dark_theme: setting(req, "dark_theme"),
 		}
 	}
 
@@ -2251,10 +2260,12 @@ mod tests {
 			posts_per_page: "25".to_owned(),
 			max_comment_thread_depth: "-1".to_owned(),
 			more_replies_new_page: "on".to_owned(),
+			light_theme: String::new(),
+			dark_theme: String::new(),
 		};
 		let urlencoded = serde_urlencoded::to_string(prefs).expect("Failed to serialize Prefs");
 
-		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off&geo_filter=GLOBAL&clean_urls=off&posts_per_page=25&max_comment_thread_depth=-1&more_replies_new_page=on");
+		assert_eq!(urlencoded, "theme=laserwave&front_page=default&layout=compact&wide=on&blur_spoiler=on&show_nsfw=off&blur_nsfw=on&hide_hls_notification=off&video_quality=best&hide_sidebar_and_summary=off&use_hls=on&autoplay_videos=on&fixed_navbar=on&disable_visit_reddit_confirmation=on&comment_sort=confidence&post_sort=top&subscriptions=memes%2Bmildlyinteresting&filters=&hide_awards=off&hide_score=off&remove_default_feeds=off&geo_filter=GLOBAL&clean_urls=off&posts_per_page=25&max_comment_thread_depth=-1&more_replies_new_page=on&light_theme=&dark_theme=");
 	}
 
 	#[test]
@@ -2443,7 +2454,14 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 	/// A code as the old plain-bincode exporter wrote it: upstream fields, optionally + geo_filter.
 	fn legacy_code(prefs: &Preferences, with_geo: bool) -> Vec<u8> {
 		let mut bytes = bincode::serialize(prefs).unwrap();
-		let newer = (&prefs.clean_urls, &prefs.posts_per_page, &prefs.max_comment_thread_depth, &prefs.more_replies_new_page);
+		let newer = (
+			&prefs.clean_urls,
+			&prefs.posts_per_page,
+			&prefs.max_comment_thread_depth,
+			&prefs.more_replies_new_page,
+			&prefs.light_theme,
+			&prefs.dark_theme,
+		);
 		let mut cut = bincode::serialized_size(&newer).unwrap() as usize;
 		if !with_geo {
 			cut += bincode::serialized_size(&prefs.geo_filter).unwrap() as usize;
@@ -2463,6 +2481,8 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 			posts_per_page: "50".to_owned(),
 			max_comment_thread_depth: "3".to_owned(),
 			more_replies_new_page: "on".to_owned(),
+			light_theme: "gruvboxlight".to_owned(),
+			dark_theme: "nord".to_owned(),
 			..Preferences::default()
 		}
 	}
@@ -2498,6 +2518,24 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 			decoded,
 			Preferences {
 				more_replies_new_page: "off".to_owned(),
+				light_theme: String::new(),
+				dark_theme: String::new(),
+				..sample_prefs()
+			}
+		);
+	}
+
+	#[test]
+	fn test_revision_3_code_gets_built_in_system_themes() {
+		// sample_prefs() as exported before revision 4
+		let code = "ϿΡഗऋÃÀσÃຖƅŔ૨åะόϖŁƔԹ໔۲ฦƚ༩ʅရԂ৬ġԳपႴѦϵǆȇՌസ४ඎწမÐ೪ణตଣ།";
+		let bytes = deflate_decompress(base2048::decode(code).unwrap()).unwrap();
+		let decoded = Preferences::from_bincode(&bytes).unwrap();
+		assert_eq!(
+			decoded,
+			Preferences {
+				light_theme: String::new(),
+				dark_theme: String::new(),
 				..sample_prefs()
 			}
 		);

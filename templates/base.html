@@ -46,6 +46,7 @@
                  {% if prefs.layout != "" %}{{ prefs.layout }}{% endif %}
                  {% if prefs.wide == "on" %} wide{% endif %}
                  {% if prefs.theme != "system" %} {{ prefs.theme }}{% endif %}
+                 {% if prefs.theme == "system" || prefs.theme == "" %}{% if prefs.light_theme != "" %} light-{{ prefs.light_theme }}{% endif %}{% if prefs.dark_theme != "" %} dark-{{ prefs.dark_theme }}{% endif %}{% endif %}
                  {% if fixed_navbar %} fixed_navbar{% endif %}">
         <div class="top_bars{% if prefs.fixed_navbar == "on" && notice %} sticky{% endif %}">
             {% if let Some(age) = stale_age %}

@@ -2115,6 +2115,11 @@ summary.comment_data {
     margin-top: 7px;
 }
 
+/* Only the System theme follows the browser's light or dark scheme */
+fieldset:not(:has(#theme option[value="system"]:checked)) .system_theme {
+    display: none;
+}
+
 .prefs-group > *:not(:last-child) {
     margin-right: 1ch;
 }

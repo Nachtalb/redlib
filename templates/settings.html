@@ -23,6 +23,32 @@
                             {{ utils::options(prefs.theme, prefs.available_themes, "system") }}
                         </select>
                     </div>
+                    <div class="prefs-group system_theme">
+                        <label for="light_theme">Light theme:</label>
+                        <select name="light_theme" id="light_theme">
+                            <option value="" {% if prefs.light_theme == "" %}selected{% endif %}>Default</option>
+                            {% for value in prefs.available_themes %}
+                                {% if value != "system" %}
+                                    <option value="{{ value }}" {% if prefs.light_theme == value.to_string() %}selected{% endif %}>
+                                        {{ format!("{}{}", value.get(0..1).unwrap_or_default().to_uppercase(), value.get(1..).unwrap_or_default()) }}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="prefs-group system_theme">
+                        <label for="dark_theme">Dark theme:</label>
+                        <select name="dark_theme" id="dark_theme">
+                            <option value="" {% if prefs.dark_theme == "" %}selected{% endif %}>Default</option>
+                            {% for value in prefs.available_themes %}
+                                {% if value != "system" %}
+                                    <option value="{{ value }}" {% if prefs.dark_theme == value.to_string() %}selected{% endif %}>
+                                        {{ format!("{}{}", value.get(0..1).unwrap_or_default().to_uppercase(), value.get(1..).unwrap_or_default()) }}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
                 </fieldset>
                 <fieldset>
                     <legend>Interface</legend>

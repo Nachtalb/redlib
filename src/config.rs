@@ -143,6 +143,12 @@ pub struct Config {
 	#[serde(rename = "REDLIB_DEFAULT_MORE_REPLIES_NEW_PAGE")]
 	pub(crate) default_more_replies_new_page: Option<String>,
 
+	#[serde(rename = "REDLIB_DEFAULT_LIGHT_THEME")]
+	pub(crate) default_light_theme: Option<String>,
+
+	#[serde(rename = "REDLIB_DEFAULT_DARK_THEME")]
+	pub(crate) default_dark_theme: Option<String>,
+
 	/// A logged-in Reddit web session, sent as the `Cookie` header on requests
 	/// Reddit refuses to serve to logged-out clients.
 	///
@@ -296,6 +302,8 @@ impl Config {
 			default_posts_per_page: parse("REDLIB_DEFAULT_POSTS_PER_PAGE"),
 			default_max_comment_thread_depth: parse("REDLIB_DEFAULT_MAX_COMMENT_THREAD_DEPTH"),
 			default_more_replies_new_page: parse("REDLIB_DEFAULT_MORE_REPLIES_NEW_PAGE"),
+			default_light_theme: parse("REDLIB_DEFAULT_LIGHT_THEME"),
+			default_dark_theme: parse("REDLIB_DEFAULT_DARK_THEME"),
 			reddit_cookie: parse("REDLIB_REDDIT_COOKIE"),
 			reddit_cookie_file: parse("REDLIB_REDDIT_COOKIE_FILE"),
 			stale_cache_mb: parse("REDLIB_STALE_CACHE_MB"),
@@ -375,6 +383,8 @@ fn get_setting_from_config(name: &str, config: &Config) -> Option<String> {
 		"REDLIB_DEFAULT_POSTS_PER_PAGE" => config.default_posts_per_page.clone(),
 		"REDLIB_DEFAULT_MAX_COMMENT_THREAD_DEPTH" => config.default_max_comment_thread_depth.clone(),
 		"REDLIB_DEFAULT_MORE_REPLIES_NEW_PAGE" => config.default_more_replies_new_page.clone(),
+		"REDLIB_DEFAULT_LIGHT_THEME" => config.default_light_theme.clone(),
+		"REDLIB_DEFAULT_DARK_THEME" => config.default_dark_theme.clone(),
 		"REDLIB_REDDIT_COOKIE" => config.reddit_cookie.clone(),
 		"REDLIB_REDDIT_COOKIE_FILE" => config.reddit_cookie_file.clone(),
 		"REDLIB_STALE_CACHE_MB" => config.stale_cache_mb.clone(),
