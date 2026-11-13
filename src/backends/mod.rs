@@ -301,11 +301,18 @@ fn region(path: &str) -> Option<String> {
 /// Fetches `path` from the first backend that serves it, and names that backend.
 /// When Reddit refuses or fails, the last good response is served instead.
 pub async fn fetch(path: String, quarantine: bool) -> Result<(Value, &'static str), String> {
-	match fetch_fresh(path.clone(), quarantine).await {
+	let found = match fetch_fresh(path.clone(), quarantine).await {
 		Ok(found) => Ok(found),
 		Err((msg, true)) => stale::load(&path, quarantine).ok_or(msg),
 		Err((msg, false)) => Err(msg),
+	};
+	// Reddit echoes the region it applied; other backends' feeds have none
+	if let Ok((json, _)) = &found {
+		if region(&path).is_some() && json["data"]["geo_filter"].is_null() {
+			stale::mark_region_ignored();
+		}
 	}
+	found
 }
 
 /// `fetch` without the stale fallback; the error says whether Reddit failed

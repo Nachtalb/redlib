@@ -37,17 +37,22 @@
             <div id="video_quality" data-value="{{ prefs.video_quality }}"></div>
         {% endblock %}
     </head>
-    {#- With the stale bar, a fixed navbar becomes a sticky header: the bar can wrap, so its height isn't known -#}
+    {#- With a notice bar, a fixed navbar becomes a sticky header: the bar can wrap, so its height isn't known -#}
     {%- let stale_age = crate::backends::stale::served_age() -%}
-    {%- let fixed_navbar = prefs.fixed_navbar == "on" && stale_age.is_none() -%}
+    {%- let region_ignored = crate::backends::stale::region_ignored() -%}
+    {%- let notice = stale_age.is_some() || region_ignored -%}
+    {%- let fixed_navbar = prefs.fixed_navbar == "on" && !notice -%}
     <body class="
                  {% if prefs.layout != "" %}{{ prefs.layout }}{% endif %}
                  {% if prefs.wide == "on" %} wide{% endif %}
                  {% if prefs.theme != "system" %} {{ prefs.theme }}{% endif %}
                  {% if fixed_navbar %} fixed_navbar{% endif %}">
-        <div class="top_bars{% if prefs.fixed_navbar == "on" && stale_age.is_some() %} sticky{% endif %}">
+        <div class="top_bars{% if prefs.fixed_navbar == "on" && notice %} sticky{% endif %}">
             {% if let Some(age) = stale_age %}
                 <div class="stale_banner" role="alert">Reddit is refusing requests. Showing this page from {{ age }}.</div>
+            {% endif %}
+            {% if region_ignored %}
+                <div class="stale_banner" role="alert">Your r/popular region couldn't be applied. Showing the global feed.</div>
             {% endif %}
 		<!-- NAVIGATION BAR -->
             <nav class="

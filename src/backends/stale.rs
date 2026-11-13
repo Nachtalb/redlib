@@ -116,11 +116,22 @@ pub fn load(path: &str, quarantine: bool) -> Option<(Value, &'static str)> {
 
 tokio::task_local! {
 	static SERVED_AGE: Cell<Option<Duration>>;
+	static REGION_IGNORED: Cell<bool>;
 }
 
-/// Runs a request handler, so pages it renders can tell they used stale data.
+/// Runs a request handler, so pages it renders can tell they used stale data
+/// or a feed without the r/popular region.
 pub async fn track<F: Future>(handler: F) -> F::Output {
-	SERVED_AGE.scope(Cell::new(None), handler).await
+	SERVED_AGE.scope(Cell::new(None), REGION_IGNORED.scope(Cell::new(false), handler)).await
+}
+
+pub fn mark_region_ignored() {
+	let _ = REGION_IGNORED.try_with(|ignored| ignored.set(true));
+}
+
+/// Whether the current page asked for an r/popular region and got the global feed.
+pub fn region_ignored() -> bool {
+	REGION_IGNORED.try_with(Cell::get).unwrap_or_default()
 }
 
 /// How old the oldest stale response on the current page is, e.g. "12 min ago".
