@@ -37,7 +37,7 @@ impl Backend for Gql {
 	}
 
 	fn supports(&self, kind: Kind) -> bool {
-		!matches!(kind, Kind::Wiki | Kind::Duplicates)
+		kind != Kind::Duplicates
 	}
 
 	fn fetch<'a>(&'a self, path: &'a str, quarantine: bool) -> Fetch<'a> {
@@ -64,6 +64,7 @@ pub async fn json(path: &str, quarantine: bool) -> Option<Result<Value, String>>
 	Some(match segments.as_slice() {
 		["by_id", ids] => posts_by_ids(ids.split(',').collect()).await,
 		["r", sub, "about"] => about(sub, quarantine).await,
+		["r", sub, "wiki", page @ ..] => wiki(sub, &page.join("/")).await,
 		["search"] => search(path, None, search_pane(path)).await,
 		["r", sub, "search"] => search(path, Some(sub), search_pane(path)).await,
 		["subreddits", "search"] => search(path, None, "communities").await,
@@ -600,6 +601,39 @@ fn subreddit(node: &Value) -> Option<Value> {
 		"weekly_contributions": node["communityStats"]["weeklyContributionsCount"],
 		"wiki_enabled": node["wikiEditMode"].as_str().is_some_and(|mode| mode != "DISABLED"),
 		"over18": node["isNsfw"] == true,
+	} }))
+}
+
+const SUBREDDIT_WIKI_HASH: &str = "32f9314683f033a76812f772bbba771958760286c5cd28c558071a3ff4eb231f";
+
+async fn wiki(sub: &str, page: &str) -> Result<Value, String> {
+	let variables = json_value!({
+		"subredditName": sub,
+		"pageName": page,
+		"includePage": true,
+		"includePageContent": true,
+		"includeMediaFragment": true,
+		"includeIsRevisable": false,
+		"includeRevisionsCount": false,
+		"includePageTitle": false,
+	});
+	let response = query("SubredditWiki", SUBREDDIT_WIKI_HASH, &variables).await?;
+	wiki_json(&response["data"]["subredditInfoByName"], sub)
+}
+
+/// The JSON API's `wiki/<page>.json`; a missing page or disabled wiki is only a `reason`, as there.
+fn wiki_json(node: &Value, sub: &str) -> Result<Value, String> {
+	if node["__typename"] != "Subreddit" {
+		return Err(format!("r/{sub} is unavailable"));
+	}
+	let page = &node["wiki"]["page"];
+	if page["status"] != "VALID" {
+		return Ok(json_value!({ "reason": page["status"] }));
+	}
+	let content = &page["content"];
+	let richtext: Value = content["richtext"].as_str().and_then(|r| serde_json::from_str(r).ok()).unwrap_or_default();
+	Ok(json_value!({ "kind": "wikipage", "data": {
+		"content_html": format!("<div class=\"md wiki\">{}</div>", render(&richtext["document"], &content["richtextMedia"])),
 	} }))
 }
 
@@ -1233,6 +1267,24 @@ mod tests {
 		let doc = r#"{"document":[{"e":"par","c":[{"e":"text","t":"hi"}]}]}"#;
 		let full = subreddit(&json_value!({ "name": "x", "description": { "richtext": doc } })).unwrap();
 		assert_eq!(full["data"]["description_html"], "<div class=\"md\"><p>hi</p></div>");
+	}
+
+	#[test]
+	fn test_wiki_json() {
+		let doc = r#"{"document":[{"e":"par","c":[{"e":"text","t":"hi"}]}]}"#;
+		let page = wiki_json(
+			&json_value!({ "__typename": "Subreddit", "wiki": { "page": { "status": "VALID", "content": { "richtext": doc } } } }),
+			"x",
+		)
+		.unwrap();
+		assert_eq!(page["data"]["content_html"], "<div class=\"md wiki\"><p>hi</p></div>");
+		let missing = wiki_json(
+			&json_value!({ "__typename": "Subreddit", "wiki": { "page": { "status": "PAGE_NOT_FOUND", "content": null } } }),
+			"x",
+		)
+		.unwrap();
+		assert_eq!(missing, json_value!({ "reason": "PAGE_NOT_FOUND" }));
+		assert!(wiki_json(&json_value!({ "__typename": "UnavailableSubreddit" }), "x").is_err());
 	}
 
 	#[tokio::test]

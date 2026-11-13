@@ -128,6 +128,14 @@ fn test_gql_subreddit_info() {
 }
 
 #[test]
+fn test_gql_wiki() {
+	let page = get(&Gql, "/r/linux/wiki/index.json?raw_json=1");
+	assert!(page["data"]["content_html"].as_str().is_some_and(|html| html.contains("<a href=")), "gql wiki: {page}");
+	let missing = get(&Gql, "/r/linux/wiki/doesnotexist.json?raw_json=1");
+	assert_eq!(missing["reason"], "PAGE_NOT_FOUND", "gql missing wiki page: {missing}");
+}
+
+#[test]
 fn test_gql_search() {
 	let page = get(&Gql, "/search.json?q=rust&raw_json=1");
 	assert_posts(&page, "gql search");
