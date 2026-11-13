@@ -12,7 +12,10 @@ use crate::utils::{enable_gql, format_url, gql_feed_requests, param};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::DateTime;
 use log::{debug, warn};
+use regex::{Captures, Regex};
 use serde_json::{json as json_value, Value};
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
 pub(crate) const GQL_URL: &str = "https://gql-fed.reddit.com/";
 
@@ -37,7 +40,7 @@ impl Backend for Gql {
 	}
 
 	fn supports(&self, kind: Kind) -> bool {
-		!matches!(kind, Kind::Wiki | Kind::Duplicates)
+		kind != Kind::Duplicates
 	}
 
 	fn fetch<'a>(&'a self, path: &'a str, quarantine: bool) -> Fetch<'a> {
@@ -64,6 +67,7 @@ pub async fn json(path: &str, quarantine: bool) -> Option<Result<Value, String>>
 	Some(match segments.as_slice() {
 		["by_id", ids] => posts_by_ids(ids.split(',').collect()).await,
 		["r", sub, "about"] => about(sub, quarantine).await,
+		["r", sub, "wiki", page @ ..] => wiki(sub, &page.join("/")).await,
 		["search"] => search(path, None, search_pane(path)).await,
 		["r", sub, "search"] => search(path, Some(sub), search_pane(path)).await,
 		["subreddits", "search"] => search(path, None, "communities").await,
@@ -603,6 +607,98 @@ fn subreddit(node: &Value) -> Option<Value> {
 	} }))
 }
 
+const SUBREDDIT_WIKI_HASH: &str = "32f9314683f033a76812f772bbba771958760286c5cd28c558071a3ff4eb231f";
+
+async fn wiki(sub: &str, page: &str) -> Result<Value, String> {
+	let variables = json_value!({
+		"subredditName": sub,
+		"pageName": page,
+		"includePage": true,
+		"includePageContent": true,
+		"includeMediaFragment": true,
+		"includeIsRevisable": false,
+		"includeRevisionsCount": false,
+		"includePageTitle": false,
+	});
+	let response = query("SubredditWiki", SUBREDDIT_WIKI_HASH, &variables).await?;
+	wiki_json(&response["data"]["subredditInfoByName"], sub)
+}
+
+/// The JSON API's `wiki/<page>.json`; a missing page or disabled wiki is only a `reason`, as there.
+fn wiki_json(node: &Value, sub: &str) -> Result<Value, String> {
+	if node["__typename"] != "Subreddit" {
+		return Err(format!("r/{sub} is unavailable"));
+	}
+	let page = &node["wiki"]["page"];
+	if page["status"] != "VALID" {
+		return Ok(json_value!({ "reason": page["status"] }));
+	}
+	let content = &page["content"];
+	let richtext: Value = content["richtext"].as_str().and_then(|r| serde_json::from_str(r).ok()).unwrap_or_default();
+	Ok(json_value!({ "kind": "wikipage", "data": {
+		"content_html": format!("<div class=\"md wiki\">{}</div>", wiki_toc(&render(&richtext["document"], &content["richtextMedia"]))),
+	} }))
+}
+
+static HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<h([1-6])>(.*?)</h[1-6]>").unwrap());
+static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
+
+/// Gives the headings the ids Reddit's wiki gives them and puts its table of
+/// contents in front, nested like Reddit nests it.
+fn wiki_toc(html: &str) -> String {
+	let mut seen: HashMap<String, usize> = HashMap::new();
+	// The open lists of the table of contents, with the heading level each started at
+	let mut lists: Vec<(usize, String)> = vec![(0, String::new())];
+	let mut previous = 0;
+	let body = HEADING.replace_all(html, |caps: &Captures| {
+		let text = htmlescape::decode_html(&TAG.replace_all(&caps[2], "")).unwrap_or_default();
+		if text.is_empty() {
+			return caps[0].to_string();
+		}
+		let mut id = "wiki_".to_string();
+		for byte in text.replace(' ', "_").to_lowercase().bytes() {
+			match byte {
+				b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'.' | b'-' => id.push(byte as char),
+				_ => id += &format!(".{byte:02X}"),
+			}
+		}
+		let count = seen.entry(id.clone()).or_default();
+		*count += 1;
+		if *count > 1 {
+			id += &count.to_string();
+		}
+
+		let level = caps[1].parse().unwrap_or(1);
+		if previous != 0 && level > previous {
+			lists.push((level, String::new()));
+		} else {
+			while lists.len() > 1 && lists.last().is_some_and(|(l, _)| *l > level) {
+				close_toc_list(&mut lists);
+			}
+		}
+		previous = level;
+		if let Some((_, list)) = lists.last_mut() {
+			*list += &format!("<li class=\"{id}\"><a href=\"#{id}\">{}</a></li>", htmlescape::encode_minimal(&text));
+		}
+		format!("<h{level} id=\"{id}\">{}</h{level}>", &caps[2])
+	});
+	if previous == 0 {
+		return html.to_string();
+	}
+	while lists.len() > 1 {
+		close_toc_list(&mut lists);
+	}
+	format!("<div class=\"toc\"><ul>{}</ul></div>{body}", lists[0].1)
+}
+
+fn close_toc_list(lists: &mut Vec<(usize, String)>) {
+	if let Some((_, list)) = lists.pop() {
+		if let Some((_, parent)) = lists.last_mut() {
+			*parent += &format!("<li class=\"toc_child\"><ul>{list}</ul></li>");
+		}
+	}
+}
+
 const DYNAMIC_SEARCH_HASH: &str = "4acac653e5aac2ae2f08114d07ba7582e852464a57e324547c259ea3ef2ebd40";
 
 /// The tab of the app's search a post search `path` asks for: its `type` is
@@ -937,19 +1033,22 @@ fn element(node: &Value, media: &Value) -> String {
 	match node["e"].as_str().unwrap_or_default() {
 		// A paragraph of only images is a figure, like the JSON API's
 		"par" if node["c"].as_array().is_some_and(|c| c.iter().all(|c| matches!(c["e"].as_str(), Some("img" | "gif")))) => children(),
-		"par" => format!("<p>{}</p>", children()),
+		"par" => pipe_table(node, media).unwrap_or_else(|| format!("<p>{}</p>", children())),
 		"text" => formatted(node),
 		"br" => "<br>".to_string(),
 		"hr" => "<hr>".to_string(),
 		"h" => {
 			let level = node["l"].as_u64().unwrap_or(1).clamp(1, 6);
-			format!("<h{level}>{}</h{level}>", children())
+			// Markdown's closing hashes (`## Title ##`) stay in the richtext
+			format!("<h{level}>{}</h{level}>", children().trim_end_matches('#').trim_end())
 		}
 		"blockquote" => format!("<blockquote>{}</blockquote>", children()),
 		"list" => {
 			let tag = if node["o"] == true { "ol" } else { "ul" };
 			format!("<{tag}>{}</{tag}>", children())
 		}
+		// Richtext puts every item in a paragraph, Reddit's HTML only items of loose lists
+		"li" if node["c"].as_array().is_some_and(|c| c.len() == 1 && c[0]["e"] == "par") => format!("<li>{}</li>", render(&node["c"][0]["c"], media)),
 		"li" => format!("<li>{}</li>", children()),
 		"code" => {
 			let lines: Vec<&str> = node["c"].as_array().into_iter().flatten().map(|line| line["t"].as_str().unwrap_or_default()).collect();
@@ -960,7 +1059,7 @@ fn element(node: &Value, media: &Value) -> String {
 			let title = node["a"].as_str().map(|a| format!(" title=\"{}\"", htmlescape::encode_minimal(a))).unwrap_or_default();
 			format!("<a href=\"{}\"{title}>{}</a>", url_attr(node["u"].as_str()), formatted(node))
 		}
-		kind @ ("r/" | "u/") => {
+		kind @ ("r/" | "u/" | "p/" | "c/") => {
 			let name = htmlescape::encode_minimal(node["t"].as_str().unwrap_or_default());
 			let slash = if node["l"] == true { "/" } else { "" };
 			format!("<a href=\"/{kind}{name}\">{slash}{kind}{name}</a>")
@@ -970,7 +1069,11 @@ fn element(node: &Value, media: &Value) -> String {
 				return String::new();
 			};
 			let src = url_attr(item["url"].as_str());
-			format!("<figure><a href=\"{src}\"><img src=\"{src}\" loading=\"lazy\"></a></figure>")
+			let caption = node["c"]
+				.as_str()
+				.map(|c| format!("<figcaption>{}</figcaption>", htmlescape::encode_minimal(c)))
+				.unwrap_or_default();
+			format!("<figure><a href=\"{src}\"><img src=\"{src}\" loading=\"lazy\"></a>{caption}</figure>")
 		}
 		"table" => table(node, media),
 		// Unknown elements: keep their content
@@ -980,7 +1083,16 @@ fn element(node: &Value, media: &Value) -> String {
 }
 
 /// RTJSON format bits and their tags
-const FORMATS: [(u64, &str); 6] = [(1, "strong"), (2, "em"), (8, "del"), (16, "sub"), (32, "sup"), (64, "code")];
+const FORMATS: [(u64, &str); 8] = [
+	(1, "strong"),
+	(2, "em"),
+	(4, "u"),
+	(8, "del"),
+	(16, "sub"),
+	(32, "sup"),
+	(64, "code"),
+	(128, "span class=\"md-spoiler-text\""),
+];
 
 /// Text with format ranges (`[bits, start, length]` in characters) as HTML.
 fn formatted(node: &Value) -> String {
@@ -1002,10 +1114,62 @@ fn formatted(node: &Value) -> String {
 		let tags: Vec<&str> = FORMATS.iter().filter(|(bit, _)| bits[start] & bit != 0).map(|(_, tag)| *tag).collect();
 		tags.iter().for_each(|tag| out += &format!("<{tag}>"));
 		out += &htmlescape::encode_minimal(&text[start..end].iter().collect::<String>());
-		tags.iter().rev().for_each(|tag| out += &format!("</{tag}>"));
+		tags.iter().rev().for_each(|tag| out += &format!("</{}>", tag.split(' ').next().unwrap_or(tag)));
 		start = end;
 	}
 	out
+}
+
+static TABLE_RULE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\|?(\s*:?-+:?\s*\|)+(\s*:?-+:?\s*)?$").unwrap());
+
+/// A markdown table richtext left as a paragraph of `|` lines (it does so in
+/// quotes), rendered as the table Reddit's HTML has.
+fn pipe_table(node: &Value, media: &Value) -> Option<String> {
+	let children = node["c"].as_array()?;
+	let lines: Vec<&[Value]> = children.split(|c| c["e"] == "br").collect();
+	let text = |line: &[Value]| line.iter().map(|c| c["t"].as_str().unwrap_or_default()).collect::<String>().trim().to_string();
+	if lines.len() < 2 || !text(lines[0]).contains('|') || !TABLE_RULE.is_match(&text(lines[1])) {
+		return None;
+	}
+	let cells = |line: &[Value]| -> Vec<String> {
+		let html = render(&Value::from(line.to_vec()), media);
+		let html = html.trim();
+		let html = html.strip_prefix('|').unwrap_or(html);
+		let html = html.strip_suffix('|').unwrap_or(html);
+		html.split('|').map(|cell| cell.trim().to_string()).collect()
+	};
+	let aligns: Vec<&str> = text(lines[1])
+		.trim_matches('|')
+		.split('|')
+		.map(|rule| match (rule.trim().starts_with(':'), rule.trim().ends_with(':')) {
+			(true, true) => " align=\"center\"",
+			(false, true) => " align=\"right\"",
+			(true, false) => " align=\"left\"",
+			_ => "",
+		})
+		.collect();
+	let row = |cells: &[String], tag: &str| -> String {
+		let cells: String = cells
+			.iter()
+			.enumerate()
+			.map(|(i, cell)| format!("<{tag}{}>{cell}</{tag}>", aligns.get(i).unwrap_or(&"")))
+			.collect();
+		format!("<tr>{cells}</tr>")
+	};
+	let head = cells(lines[0]);
+	let mut body = String::new();
+	for line in lines[2..].iter().filter(|line| !text(line).is_empty()) {
+		let mut cells = cells(line);
+		// Rows richtext joined into one line come as `a | b | | c | d`
+		while cells.len() > head.len() && cells[head.len()].is_empty() {
+			let rest = cells.split_off(head.len() + 1);
+			cells.truncate(head.len());
+			body += &row(&cells, "td");
+			cells = rest;
+		}
+		body += &row(&cells, "td");
+	}
+	Some(format!("<table><thead>{}</thead><tbody>{body}</tbody></table>", row(&head, "th")))
 }
 
 fn table(node: &Value, media: &Value) -> String {
@@ -1072,7 +1236,7 @@ mod tests {
 				r#"<p>a &lt;b&gt; ünï <strong>bo</strong><strong><em>ld</em></strong><a href="" title="t&quot;">x</a><a href="/r/rust">/r/rust</a><span class="md-spoiler-text">s</span></p>"#,
 				r#"<figure><a href="/preview/external-pre/g.gif?s=1&amp;a=2"><img src="/preview/external-pre/g.gif?s=1&amp;a=2" loading="lazy"></a></figure>"#,
 				"<pre><code>&lt;x&gt;\ny</code></pre>",
-				"<ol><li><p>i</p></li></ol>",
+				"<ol><li>i</li></ol>",
 				r#"<table><thead><tr><th align="right">H</th><th></th></tr></thead><tbody><tr><td align="right">1</td><td></td></tr></tbody></table>"#,
 				"kept",
 			)
@@ -1233,6 +1397,95 @@ mod tests {
 		let doc = r#"{"document":[{"e":"par","c":[{"e":"text","t":"hi"}]}]}"#;
 		let full = subreddit(&json_value!({ "name": "x", "description": { "richtext": doc } })).unwrap();
 		assert_eq!(full["data"]["description_html"], "<div class=\"md\"><p>hi</p></div>");
+	}
+
+	#[test]
+	fn test_render_list_items() {
+		let item = |c: Value| json_value!([{ "e": "list", "c": [{ "e": "li", "c": c }] }]);
+		let par = |t: &str| json_value!({ "e": "par", "c": [{ "e": "text", "t": t }] });
+		assert_eq!(render(&item(json_value!([par("a")])), &Value::Null), "<ul><li>a</li></ul>");
+		assert_eq!(render(&item(json_value!([par("a"), par("b")])), &Value::Null), "<ul><li><p>a</p><p>b</p></li></ul>");
+	}
+
+	#[test]
+	fn test_render_heading_closing_hashes() {
+		let doc = json_value!([{ "e": "h", "l": 2, "c": [{ "e": "raw", "t": "Rules ##" }] }, { "e": "h", "l": 3, "c": [{ "e": "raw", "t": "C#" }] }]);
+		assert_eq!(render(&doc, &Value::Null), "<h2>Rules</h2><h3>C</h3>");
+	}
+
+	#[test]
+	fn test_render_app_formats() {
+		let doc = json_value!([{ "e": "par", "c": [
+			{ "e": "text", "t": "us", "f": [[4, 0, 1], [128, 1, 1]] },
+			{ "e": "p/", "t": "x", "l": false },
+			{ "e": "c/", "t": "y", "l": true },
+			{ "e": "img", "id": "i", "c": "cap <1>" },
+		]}]);
+		let media = json_value!([{ "id": "i", "url": "https://i.redd.it/i.png" }]);
+		assert_eq!(
+			render(&doc, &media),
+			concat!(
+				r#"<p><u>u</u><span class="md-spoiler-text">s</span><a href="/p/x">p/x</a><a href="/c/y">/c/y</a>"#,
+				r#"<figure><a href="/img/i.png"><img src="/img/i.png" loading="lazy"></a><figcaption>cap &lt;1&gt;</figcaption></figure></p>"#,
+			)
+		);
+	}
+
+	#[test]
+	fn test_render_pipe_table() {
+		let line = |t: &str| json_value!({ "e": "text", "t": t });
+		let br = json_value!({ "e": "br" });
+		let doc = json_value!([{ "e": "par", "c": [
+			line("| A | B |"), br.clone(), line("|:-|-:|"), br.clone(),
+			line("| "), { "e": "link", "t": "x", "u": "https://example.com" }, line(" | 1 | | y | 2 |"), br.clone(), line("| z | 3 |"),
+		]}]);
+		assert_eq!(
+			render(&doc, &Value::Null),
+			concat!(
+				r#"<table><thead><tr><th align="left">A</th><th align="right">B</th></tr></thead><tbody>"#,
+				r#"<tr><td align="left"><a href="https://example.com">x</a></td><td align="right">1</td></tr>"#,
+				r#"<tr><td align="left">y</td><td align="right">2</td></tr>"#,
+				r#"<tr><td align="left">z</td><td align="right">3</td></tr></tbody></table>"#,
+			)
+		);
+		let lines = json_value!([{ "e": "par", "c": [line("a | b"), br, line("c")] }]);
+		assert_eq!(render(&lines, &Value::Null), "<p>a | b<br>c</p>");
+	}
+
+	#[test]
+	fn test_wiki_toc() {
+		let html = "<h1>Intro: A/B</h1><p>x</p><h2>Sub</h2><h3>Deep</h3><h2>Sub</h2><h1>Ünï &amp; co</h1>";
+		assert_eq!(
+			wiki_toc(html),
+			concat!(
+				r##"<div class="toc"><ul><li class="wiki_intro.3A_a.2Fb"><a href="#wiki_intro.3A_a.2Fb">Intro: A/B</a></li>"##,
+				r##"<li class="toc_child"><ul><li class="wiki_sub"><a href="#wiki_sub">Sub</a></li>"##,
+				r##"<li class="toc_child"><ul><li class="wiki_deep"><a href="#wiki_deep">Deep</a></li></ul></li>"##,
+				r##"<li class="wiki_sub2"><a href="#wiki_sub2">Sub</a></li></ul></li>"##,
+				r##"<li class="wiki_.C3.BCn.C3.AF_.26_co"><a href="#wiki_.C3.BCn.C3.AF_.26_co">Ünï &amp; co</a></li></ul></div>"##,
+				r##"<h1 id="wiki_intro.3A_a.2Fb">Intro: A/B</h1><p>x</p><h2 id="wiki_sub">Sub</h2><h3 id="wiki_deep">Deep</h3>"##,
+				r##"<h2 id="wiki_sub2">Sub</h2><h1 id="wiki_.C3.BCn.C3.AF_.26_co">Ünï &amp; co</h1>"##,
+			)
+		);
+		assert_eq!(wiki_toc("<p>no headings</p>"), "<p>no headings</p>");
+	}
+
+	#[test]
+	fn test_wiki_json() {
+		let doc = r#"{"document":[{"e":"par","c":[{"e":"text","t":"hi"}]}]}"#;
+		let page = wiki_json(
+			&json_value!({ "__typename": "Subreddit", "wiki": { "page": { "status": "VALID", "content": { "richtext": doc } } } }),
+			"x",
+		)
+		.unwrap();
+		assert_eq!(page["data"]["content_html"], "<div class=\"md wiki\"><p>hi</p></div>");
+		let missing = wiki_json(
+			&json_value!({ "__typename": "Subreddit", "wiki": { "page": { "status": "PAGE_NOT_FOUND", "content": null } } }),
+			"x",
+		)
+		.unwrap();
+		assert_eq!(missing, json_value!({ "reason": "PAGE_NOT_FOUND" }));
+		assert!(wiki_json(&json_value!({ "__typename": "UnavailableSubreddit" }), "x").is_err());
 	}
 
 	#[tokio::test]
