@@ -129,7 +129,7 @@ pub async fn community(req: Request<Body>) -> Result<Response<Body>, String> {
 		return Ok(nsfw_landing(req, req_url).await.unwrap_or_default());
 	}
 
-	let mut params = String::from("&raw_json=1");
+	let mut params = format!("&raw_json=1{}", default_timeframe(&sort, req.uri().query().unwrap_or_default()));
 	if sub_name == "popular" {
 		params.push_str(&format!("&geo_filter={}", prefs.geo_filter));
 	}
@@ -767,7 +767,7 @@ pub async fn rss(req: Request<Body>) -> Result<Response<Body>, String> {
 		return error(req, "NSFW content is disabled on this instance.").await;
 	}
 
-	let mut params = String::from("&raw_json=1");
+	let mut params = format!("&raw_json=1{}", default_timeframe(&sort, req.uri().query().unwrap_or_default()));
 	if sub == "popular" {
 		params.push_str(&format!("&geo_filter={}", Preferences::new(&req).geo_filter));
 	}
@@ -788,8 +788,26 @@ pub async fn rss(req: Request<Body>) -> Result<Response<Body>, String> {
 	Ok(rss_response(&channel))
 }
 
+/// Reddit's API reads a missing `t` as all time, while reddit.com and the timeframe menu show today.
+fn default_timeframe(sort: &str, query: &str) -> &'static str {
+	if matches!(sort, "top" | "controversial") && param(&format!("?{query}"), "t").unwrap_or_default().is_empty() {
+		"&t=day"
+	} else {
+		""
+	}
+}
+
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn test_top_defaults_to_today() {
+		assert_eq!(default_timeframe("top", ""), "&t=day");
+		assert_eq!(default_timeframe("controversial", "t=&after=t3_x"), "&t=day");
+		assert_eq!(default_timeframe("top", "after=t3_x"), "&t=day");
+		assert_eq!(default_timeframe("top", "t=week"), "");
+		assert_eq!(default_timeframe("hot", "t="), "");
+	}
+
 	use super::*;
 
 	#[test]
