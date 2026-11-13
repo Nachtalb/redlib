@@ -977,7 +977,8 @@ fn element(node: &Value, media: &Value) -> String {
 		"hr" => "<hr>".to_string(),
 		"h" => {
 			let level = node["l"].as_u64().unwrap_or(1).clamp(1, 6);
-			format!("<h{level}>{}</h{level}>", children())
+			// Markdown's closing hashes (`## Title ##`) stay in the richtext
+			format!("<h{level}>{}</h{level}>", children().trim_end_matches('#').trim_end())
 		}
 		"blockquote" => format!("<blockquote>{}</blockquote>", children()),
 		"list" => {
@@ -1277,6 +1278,12 @@ mod tests {
 		let par = |t: &str| json_value!({ "e": "par", "c": [{ "e": "text", "t": t }] });
 		assert_eq!(render(&item(json_value!([par("a")])), &Value::Null), "<ul><li>a</li></ul>");
 		assert_eq!(render(&item(json_value!([par("a"), par("b")])), &Value::Null), "<ul><li><p>a</p><p>b</p></li></ul>");
+	}
+
+	#[test]
+	fn test_render_heading_closing_hashes() {
+		let doc = json_value!([{ "e": "h", "l": 2, "c": [{ "e": "raw", "t": "Rules ##" }] }, { "e": "h", "l": 3, "c": [{ "e": "raw", "t": "C#" }] }]);
+		assert_eq!(render(&doc, &Value::Null), "<h2>Rules</h2><h3>C</h3>");
 	}
 
 	#[test]
