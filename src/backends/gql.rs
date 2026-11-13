@@ -984,6 +984,8 @@ fn element(node: &Value, media: &Value) -> String {
 			let tag = if node["o"] == true { "ol" } else { "ul" };
 			format!("<{tag}>{}</{tag}>", children())
 		}
+		// Richtext puts every item in a paragraph, Reddit's HTML only items of loose lists
+		"li" if node["c"].as_array().is_some_and(|c| c.len() == 1 && c[0]["e"] == "par") => format!("<li>{}</li>", render(&node["c"][0]["c"], media)),
 		"li" => format!("<li>{}</li>", children()),
 		"code" => {
 			let lines: Vec<&str> = node["c"].as_array().into_iter().flatten().map(|line| line["t"].as_str().unwrap_or_default()).collect();
@@ -1106,7 +1108,7 @@ mod tests {
 				r#"<p>a &lt;b&gt; ünï <strong>bo</strong><strong><em>ld</em></strong><a href="" title="t&quot;">x</a><a href="/r/rust">/r/rust</a><span class="md-spoiler-text">s</span></p>"#,
 				r#"<figure><a href="/preview/external-pre/g.gif?s=1&amp;a=2"><img src="/preview/external-pre/g.gif?s=1&amp;a=2" loading="lazy"></a></figure>"#,
 				"<pre><code>&lt;x&gt;\ny</code></pre>",
-				"<ol><li><p>i</p></li></ol>",
+				"<ol><li>i</li></ol>",
 				r#"<table><thead><tr><th align="right">H</th><th></th></tr></thead><tbody><tr><td align="right">1</td><td></td></tr></tbody></table>"#,
 				"kept",
 			)
@@ -1267,6 +1269,14 @@ mod tests {
 		let doc = r#"{"document":[{"e":"par","c":[{"e":"text","t":"hi"}]}]}"#;
 		let full = subreddit(&json_value!({ "name": "x", "description": { "richtext": doc } })).unwrap();
 		assert_eq!(full["data"]["description_html"], "<div class=\"md\"><p>hi</p></div>");
+	}
+
+	#[test]
+	fn test_render_list_items() {
+		let item = |c: Value| json_value!([{ "e": "list", "c": [{ "e": "li", "c": c }] }]);
+		let par = |t: &str| json_value!({ "e": "par", "c": [{ "e": "text", "t": t }] });
+		assert_eq!(render(&item(json_value!([par("a")])), &Value::Null), "<ul><li>a</li></ul>");
+		assert_eq!(render(&item(json_value!([par("a"), par("b")])), &Value::Null), "<ul><li><p>a</p><p>b</p></li></ul>");
 	}
 
 	#[test]
