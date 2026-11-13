@@ -103,12 +103,20 @@ fn test_gql_all() {
 	assert_posts(&get(&Gql, "/r/all/hot.json?raw_json=1"), "gql all");
 }
 
-/// Fails once Reddit closes the `r/all+` gap as well.
+/// Fails once Reddit closes the `r/all%2B` gap as well. A bare `r/all+`
+/// gets a fixed copy of r/popular's first page that ignores `after`.
 #[test]
 fn test_json_all() {
-	let page = get(&Json, "/r/all/new.json?raw_json=1");
+	let page = get(&Json, "/r/all/hot.json?raw_json=1");
 	assert_posts(&page, "json all");
 	assert!(children(&page, "json all").len() >= 20, "json all: page size ignored");
+	let after = page["data"]["after"].as_str().expect("json all: no after");
+	let next = get(&Json, &format!("/r/all/hot.json?raw_json=1&after={after}"));
+	assert_ne!(
+		children(&next, "json all")[0]["data"]["id"],
+		children(&page, "json all")[0]["data"]["id"],
+		"json all: after ignored"
+	);
 }
 
 /// Reddit refuses `/new` to every browser with the same page as a blocked one,
