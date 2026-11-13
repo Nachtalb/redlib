@@ -165,7 +165,7 @@ impl InstanceInfo {
 				["Hide HLS notification", &effective(&self.config.default_hide_hls_notification, "off")],
 				["Subscriptions", &effective(&self.config.default_subscriptions, "none")],
 				["Filters", &effective(&self.config.default_filters, "none")],
-				["Geo filter", &effective(&self.config.default_geo_filter, "GLOBAL")],
+				["r/Popular region", &effective(&self.config.default_geo_filter, "GLOBAL")],
 				["Clean URLs", &effective(&self.config.default_clean_urls, "off")],
 				["Posts per page", &effective(&self.config.default_posts_per_page, "25")],
 				["Max comment thread depth", &effective(&self.config.default_max_comment_thread_depth, "0")],

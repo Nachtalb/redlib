@@ -289,14 +289,30 @@ fn cursor_owner(path: &str) -> Option<&'static str> {
 	})
 }
 
+/// The r/popular region `path` asks for, unless it's global. Only `json`
+/// applies it, so it is tried first.
+fn region(path: &str) -> Option<String> {
+	if !path.starts_with("/r/popular") {
+		return None;
+	}
+	param(&format!("?{}", path.split_once('?')?.1), "geo_filter").filter(|region| !region.is_empty() && region != "GLOBAL")
+}
+
 /// Fetches `path` from the first backend that serves it, and names that backend.
 /// When Reddit refuses or fails, the last good response is served instead.
 pub async fn fetch(path: String, quarantine: bool) -> Result<(Value, &'static str), String> {
-	match fetch_fresh(path.clone(), quarantine).await {
+	let found = match fetch_fresh(path.clone(), quarantine).await {
 		Ok(found) => Ok(found),
 		Err((msg, true)) => stale::load(&path, quarantine).ok_or(msg),
 		Err((msg, false)) => Err(msg),
+	};
+	// Reddit echoes the region it applied; other backends' feeds have none
+	if let Ok((json, _)) = &found {
+		if region(&path).is_some() && json["data"]["geo_filter"].is_null() {
+			stale::mark_region_ignored();
+		}
 	}
+	found
 }
 
 /// `fetch` without the stale fallback; the error says whether Reddit failed
@@ -310,7 +326,13 @@ async fn fetch_fresh(path: String, quarantine: bool) -> Result<(Value, &'static 
 
 	let backends: Order = match cursor_owner(&path).filter(|_| kind == Kind::Comments) {
 		Some(owner) => BACKENDS.iter().copied().filter(|backend| backend.name() == owner).collect(),
-		None => order(kind),
+		None => {
+			let mut order = order(kind);
+			if region(&path).is_some() {
+				order.sort_by_key(|backend| backend.name() != "json");
+			}
+			order
+		}
 	};
 	for backend in backends.into_iter().filter(|backend| usable(kind, *backend)) {
 		let result = backend.fetch(&path, quarantine).await;
@@ -441,6 +463,13 @@ mod tests {
 
 	fn names(order: &[&dyn Backend]) -> Vec<&'static str> {
 		order.iter().map(|backend| backend.name()).collect()
+	}
+
+	#[test]
+	fn test_region() {
+		assert_eq!(region("/r/popular/hot.json?&raw_json=1&geo_filter=DE"), Some("DE".into()));
+		assert_eq!(region("/r/popular/hot.json?&raw_json=1&geo_filter=GLOBAL"), None);
+		assert_eq!(region("/r/rust/hot.json?geo_filter=DE"), None);
 	}
 
 	#[test]
