@@ -107,12 +107,12 @@ impl Kind {
 	fn default_order(self) -> &'static str {
 		match self {
 			Self::Post | Self::Subreddit | Self::Search => "gql, json, cookied-json",
-			// Reddit answers anonymous user JSON with 403 whatever the client
-			Self::User => "gql, cookied-json",
+			// Reddit answers anonymous user and wiki JSON with 403 whatever the client
+			Self::User | Self::Wiki => "gql, cookied-json",
 			Self::Comments => "gql, cookied-json, scraped, json",
 			Self::Listing => "json, gql, cookied-json",
 			Self::All => "json, gql, cookied-json",
-			Self::Wiki | Self::Duplicates => "json, cookied-json",
+			Self::Duplicates => "json, cookied-json",
 		}
 	}
 
@@ -479,7 +479,7 @@ mod tests {
 	fn test_default_order() {
 		assert_eq!(names(&order(Kind::Comments)), ["gql", "cookied-json", "scraped", "json"]);
 		assert_eq!(names(&order(Kind::Listing)), ["json", "gql", "cookied-json"]);
-		assert_eq!(names(&order(Kind::Wiki)), ["json", "cookied-json"]);
+		assert_eq!(names(&order(Kind::Wiki)), ["gql", "cookied-json"]);
 		assert_eq!(names(&order(Kind::All)), ["json", "gql", "cookied-json"]);
 	}
 
@@ -493,7 +493,7 @@ mod tests {
 	#[test]
 	#[sealed_test(env = [("REDLIB_ENDPOINTS", ""), ("REDLIB_ENDPOINTS_LISTING", "gql")])]
 	fn test_empty_setting_means_unset() {
-		assert_eq!(names(&order(Kind::Wiki)), ["json", "cookied-json"]);
+		assert_eq!(names(&order(Kind::Wiki)), ["gql", "cookied-json"]);
 		assert_eq!(names(&order(Kind::Listing)), ["gql"]);
 	}
 
