@@ -861,7 +861,7 @@ summary:not(.comment_data):hover {
     line-height: 35px;
 }
 
-#top > div {
+#top > .active {
     border-bottom: 2px solid var(--text);
 }
 
