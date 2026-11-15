@@ -26,6 +26,8 @@ ENV CARGO_TARGET_I686_UNKNOWN_LINUX_MUSL_RUSTFLAGS="--cfg libc_unstable_musl_v1_
 # BoringSSL's x86 assembly requires SSE2, which Rust's i686 target already assumes.
 ENV CFLAGS_i686_unknown_linux_musl="-msse2" \
     CXXFLAGS_i686_unknown_linux_musl="-msse2"
+# mimalloc: no transparent huge pages, they keep 2 MiB per touched page resident.
+ENV TARGET_CFLAGS="-DMI_DEFAULT_ALLOW_THP=0"
 
 RUN rustup toolchain install 1.99 --profile minimal --no-self-update --target $CARGO_BUILD_TARGET && rustup default 1.99
 

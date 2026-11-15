@@ -133,6 +133,7 @@ Own features:
   ([#69](https://github.com/Nachtalb/redlib/issues/69)).
 - **New Reddit's sidebar**: subreddits show the widgets new Reddit shows (rules you can expand, related communities with their member counts, text boxes, images, link menus) instead of the old-reddit sidebar text mods often left stale. Each box folds on its title and only the rules start open, so big sidebars like r/europe stay short. Subreddits without widgets keep the old sidebar.
 - **`--cacert <FILE>`** or `REDLIB_CACERT`: trusts only the CA certificates in that file for requests to Reddit, to inspect them through a proxy like mitmproxy ([#157](https://github.com/Nachtalb/redlib/issues/157)).
+- **mimalloc allocator**: replaces musl's malloc, which is slow when many threads allocate, in the static release binaries and images.
 
 ## Configuration
 
