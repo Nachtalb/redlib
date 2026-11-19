@@ -2248,10 +2248,7 @@ mod tests {
 		assert_eq!(format_url("https://v.redd.it/foo/HLSPlaylist.m3u8?a=bar&v=1&f=sd"), "/hls/foo/HLSPlaylist.m3u8");
 		assert_eq!(format_url("https://v.redd.it/foo/HLSPlaylist.m3u8"), "/hls/foo/HLSPlaylist.m3u8");
 		// cookied backend hands out cf.v.redd.it URLs; they must rewrite to the same /hls/ and /vid/ routes
-		assert_eq!(
-			format_url("https://cf.v.redd.it/foo/HLSPlaylist.m3u8?f=hd&v=1&a=bar"),
-			"/hls/foo/HLSPlaylist.m3u8"
-		);
+		assert_eq!(format_url("https://cf.v.redd.it/foo/HLSPlaylist.m3u8?f=hd&v=1&a=bar"), "/hls/foo/HLSPlaylist.m3u8");
 		assert_eq!(format_url("https://cf.v.redd.it/foo/DASH_360.mp4?source=fallback"), "/vid/foo/DASH/360.mp4");
 		assert_eq!(format_url("https://www.redditstatic.com/gold/awards/icon/icon.png"), "/static/gold/awards/icon/icon.png");
 		assert_eq!(
