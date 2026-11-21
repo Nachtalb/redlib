@@ -1328,7 +1328,8 @@ pub fn render_bullet_lists(input_text: &str) -> String {
 
 // These are links we want to replace in-body
 static REDDIT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"href="(https|http|)://(www\.|old\.|np\.|amp\.|new\.|)(reddit\.com|redd\.it)/"#).unwrap());
-static REDDIT_PREVIEW_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://(external-preview|preview|i)\.redd\.it").unwrap());
+// The second group stops `i.redd.it.example.org` from matching.
+static REDDIT_PREVIEW_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://(external-preview|preview|i)\.redd\.it([^\w.-]|$)").unwrap());
 static REDDIT_EMOJI_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"https?://(?:www\.)?redditstatic\.com/[^\s"'<>]*"#).unwrap());
 // A preview link up to its first `</a>`, and the `</p>` if that closes the paragraph
 static REDDIT_PREVIEW_PARAGRAPH_REGEX: LazyLock<Regex> =
@@ -1445,7 +1446,9 @@ pub fn rewrite_urls(input_text: &str) -> String {
 		})
 		.to_string();
 
-	REDDIT_PREVIEW_REGEX.replace_all(&text1, |caps: &regex::Captures<'_>| preview_type(&caps[1])).to_string()
+	REDDIT_PREVIEW_REGEX
+		.replace_all(&text1, |caps: &regex::Captures<'_>| format!("{}{}", preview_type(&caps[1]), &caps[2]))
+		.to_string()
 }
 
 // Match Giphy URLs in comment anchor tags, capturing the GIF ID
@@ -2336,6 +2339,10 @@ mod tests {
 			r#"<p><a href="https://preview.redd.it/6awags382xo31.png?width=2560&amp;format=png&amp;auto=webp&amp;s=9c563aed4f07a91bdd249b5a3cea43a79710dcfc">caption 1</a></p>"#;
 		let output = r#"<figure><a href="/preview/pre/6awags382xo31.png?width=2560&amp;format=png&amp;auto=webp&amp;s=9c563aed4f07a91bdd249b5a3cea43a79710dcfc"><img loading="lazy" src="/preview/pre/6awags382xo31.png?width=2560&amp;format=png&amp;auto=webp&amp;s=9c563aed4f07a91bdd249b5a3cea43a79710dcfc"></a><figcaption>caption 1</figcaption></figure>"#;
 		assert_eq!(rewrite_urls(input), output);
+
+		let lookalike = r#"<a href="https://i.redd.it.example.org/a.jpg">https://preview.redd.it-example.org/a.jpg</a>"#;
+		assert_eq!(rewrite_urls(lookalike), lookalike);
+		assert_eq!(rewrite_urls("see https://i.redd.it"), "see /img");
 	}
 
 	#[tokio::test]
