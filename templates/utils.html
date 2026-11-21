@@ -63,7 +63,7 @@
     {% endif %}
 {%- endmacro %}
 
-{% macro post(post) -%}
+{% macro post(post, share = false) -%}
     {% set post_should_be_blurred = post.flags.spoiler && prefs.blur_spoiler=="on" -%}
 <!-- POST CONTENT -->
     <div class="post highlighted{% if post_should_be_blurred %} post_blurred{% endif %}">
@@ -183,6 +183,9 @@
                     <li class="mobile_item"><a target="_blank" href="https://archive.is/latest/{{ post.media.url }}">archive</a></li>
                 {% endif %}
                 {{ external_reddit_link(post.permalink) }}
+                {% if share %}
+                    <li><a class="share" href="{{ prefs.share_url(post.permalink) }}"><span>share</span><span>copied</span></a></li>
+                {% endif %}
 
                 {% if post.media.download_name != "" && post.post_type != "gallery" %}
                     <li>

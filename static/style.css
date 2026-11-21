@@ -711,6 +711,24 @@ aside {
     white-space: nowrap;
 }
 
+#sub_actions {
+    grid-template-columns: 1fr 1fr auto;
+}
+
+/* Both states share one grid cell, so swapping them never changes the width */
+.share {
+    display: inline-grid;
+}
+
+.share > * {
+    grid-area: 1 / 1;
+}
+
+.share:not(.copied) > :last-child,
+.share.copied > :first-child {
+    visibility: hidden;
+}
+
 summary:not(.comment_data):hover {
     text-decoration: underline;
 }
@@ -738,6 +756,7 @@ summary:not(.comment_data):hover {
 #user_subscription,
 #sub_filter,
 #user_filter,
+#sub_share,
 #sub_rss,
 #user_rss {
     margin-top: 20px;
