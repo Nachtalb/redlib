@@ -61,7 +61,7 @@ Assign a default value for each instance-specific setting by passing environment
 | `ENABLE_RSS`              | `["on", "off"]` | `off`                                  | Enables RSS feed generation.                                                                              |
 | `ENABLE_REDGIFS`          | `["on", "off"]` | `on`                                   | Proxies RedGifs videos and plays them inline. Set to `off` to leave RedGifs as plain links.               |
 | `ENABLE_GIPHY`            | `["on", "off"]` | `on`                                   | Proxies GIPHY GIFs in comments and plays them inline. Set to `off` to leave them as plain links.          |
-| `FULL_URL`                | String          | (empty)                                | Allows for proper URLs (for now, only needed by RSS)                                                      |
+| `FULL_URL`                | String          | (empty)                                | Allows for proper URLs (RSS feeds; also the default base of shared links)                                 |
 | `SOURCE_URL`              | String          | `https://github.com/Nachtalb/redlib`   | Link to the source code for this instance. The update check on error pages compares against this GitHub repository's `main` branch. |
 | `ENABLE_SCRAPE_FALLBACK`  | `["on", "off"]` | `on`                                   | Allows the `scraped` backend: comments and combined feeds scraped from Reddit's HTML. See [Scrape fallback](#scrape-fallback). |
 | `ENABLE_GQL`              | `["on", "off"]` | `on`                                   | Allows the `gql` backend: Reddit's GraphQL API. `off` never contacts it. |
@@ -184,6 +184,7 @@ Assign a default value for each user-modifiable setting by passing environment v
 | `MORE_REPLIES_NEW_PAGE`             | `["on", "off"]`                                                                                                                                                                                                                 | `off`         |
 | `LIGHT_THEME`                       | Any `THEME` except `"system"`, used by `system` in light mode (empty = built-in light)                                                                                                                                          | `""`          |
 | `DARK_THEME`                        | Any `THEME` except `"system"`, used by `system` in dark mode (empty = built-in dark)                                                                                                                                            | `""`          |
+| `SHARE_LINK`                        | Base address of shared post and subreddit links, a domain (`r.naa.gg`) or http(s) URL                                                                                                                                           | `FULL_URL`, else `https://www.reddit.com` |
 
 ## Forward proxies
 
