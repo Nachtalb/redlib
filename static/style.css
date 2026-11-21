@@ -729,6 +729,11 @@ aside {
     visibility: hidden;
 }
 
+/* A filled glyph: the global svg stroke would outline it */
+.share svg {
+    stroke: none;
+}
+
 summary:not(.comment_data):hover {
     text-decoration: underline;
 }
