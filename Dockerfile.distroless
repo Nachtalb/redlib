@@ -29,6 +29,8 @@ ENV CARGO_TARGET_I686_UNKNOWN_LINUX_MUSL_RUSTFLAGS="--cfg libc_unstable_musl_v1_
 ENV CFLAGS_i686_unknown_linux_musl="-msse2" \
     CXXFLAGS_i686_unknown_linux_musl="-msse2"
 
+# Rust links riscv64 musl dynamically by default, and the release image has no loader.
+ENV CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static"
 # mips64el is tier 3: Rust ships no std for it, so nightly builds one; LTO breaks its link.
 ENV CARGO_TARGET_MIPS64EL_UNKNOWN_LINUX_MUSLABI64_RUSTFLAGS="-C link-arg=-mxgot"
 RUN if [ "$CARGO_BUILD_TARGET" = mips64el-unknown-linux-muslabi64 ]; then \
