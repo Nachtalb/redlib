@@ -25,7 +25,7 @@ struct SettingsTemplate {
 
 // CONSTANTS
 
-const PREFS: [&str; 26] = [
+const PREFS: [&str; 27] = [
 	"theme",
 	"front_page",
 	"layout",
@@ -52,6 +52,7 @@ const PREFS: [&str; 26] = [
 	"more_replies_new_page",
 	"light_theme",
 	"dark_theme",
+	"share_link",
 ];
 
 pub static GEO_FILTERS: [(&str, &str); 250] = [

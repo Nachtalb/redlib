@@ -137,6 +137,7 @@ Own features:
   ([#69](https://github.com/Nachtalb/redlib/issues/69)).
 - **New Reddit's sidebar**: subreddits show the widgets new Reddit shows (rules you can expand, related communities with their member counts, text boxes, images, link menus) instead of the old-reddit sidebar text mods often left stale. Each box folds on its title and only the rules start open, so big sidebars like r/europe stay short. Subreddits without widgets keep the old sidebar.
 - **`--cacert <FILE>`** or `REDLIB_CACERT`: trusts only the CA certificates in that file for requests to Reddit, to inspect them through a proxy like mitmproxy ([#157](https://github.com/Nachtalb/redlib/issues/157)).
+- **Share links**: a `share` link on post pages and a share button on subreddits open the share sheet or copy an address starting with the "Share links point to" setting.
 
 ## Configuration
 
@@ -166,6 +167,7 @@ Each has an instance default via `REDLIB_DEFAULT_<NAME>`:
 | Max comment thread depth | `REDLIB_DEFAULT_MAX_COMMENT_THREAD_DEPTH` | `0` (unlimited) |
 | Always open replies in thread view | `REDLIB_DEFAULT_MORE_REPLIES_NEW_PAGE` | `off` |
 | Light theme, dark theme (for the System theme) | `REDLIB_DEFAULT_LIGHT_THEME`, `REDLIB_DEFAULT_DARK_THEME` | empty (built-in light/dark) |
+| Share links point to | `REDLIB_DEFAULT_SHARE_LINK` | `REDLIB_FULL_URL`, else `https://www.reddit.com` |
 
 All of them are documented in [CONFIGURATION.md](CONFIGURATION.md), `.env.example` and `app.json`.
 
@@ -175,7 +177,7 @@ Settings codes (Settings → export / restore) now carry a format revision:
 
 - **New codes** start with a marker byte and are revisioned. A code exported before a setting existed restores that setting to its default.
 - **Old codes** from upstream Redlib still restore. Settings they don't contain get their defaults.
-- Settings added in this fork belong to revision 2, except "Always open replies in thread view" in revision 3 and the light and dark theme in revision 4: older revisions' codes were already in use, and a new field in them would stop those codes from restoring.
+- Settings added in this fork belong to revision 2, except "Always open replies in thread view" in revision 3, the light and dark theme in revision 4 and the share link in revision 5: older revisions' codes were already in use, and a new field in them would stop those codes from restoring.
 
 Codes exported from this fork can't be restored on upstream Redlib.
 

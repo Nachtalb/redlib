@@ -43,6 +43,7 @@
     {% endif %}
     <script src="/downloadGallery.js?v={{ crate::utils::short_git_hash() }}" defer></script>
     <script src="/loadMoreComments.js?v={{ crate::utils::short_git_hash() }}" defer></script>
+    <script src="/share.js?v={{ crate::utils::short_git_hash() }}" defer></script>
 {% endblock %}
 
 {% block subscriptions %}
@@ -51,7 +52,7 @@
 
 {% block content %}
     <div id="column_one">
-        {{ utils::post(post) }}
+        {{ utils::post(post, true) }}
 
 		<!-- SORT FORM -->
         <div id="commentQueryForms">

@@ -115,6 +115,9 @@
     },
     "REDLIB_DEFAULT_DARK_THEME": {
         "required": false
+    },
+    "REDLIB_DEFAULT_SHARE_LINK": {
+        "required": false
     }
   }
 }
