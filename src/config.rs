@@ -339,7 +339,7 @@ impl Config {
 fn normalize_case(key: &str, value: String) -> String {
 	match key {
 		"REDLIB_DEFAULT_GEO_FILTER" => value.to_ascii_uppercase(),
-		"REDLIB_DEFAULT_SUBSCRIPTIONS" | "REDLIB_DEFAULT_FILTERS" => value,
+		"REDLIB_DEFAULT_SUBSCRIPTIONS" | "REDLIB_DEFAULT_FILTERS" | "REDLIB_DEFAULT_SHARE_LINK" => value,
 		"REDLIB_PUSHSHIFT_FRONTEND" => match value.split_once('/') {
 			Some((host, path)) => format!("{}/{path}", host.to_ascii_lowercase()),
 			None => value.to_ascii_lowercase(),
@@ -582,6 +582,7 @@ mod tests {
 		("REDLIB_DEFAULT_SUBSCRIPTIONS", "Rust+Linux"),
 		("REDLIB_FULL_URL", "https://Example.com/Redlib"),
 		("REDLIB_PUSHSHIFT_FRONTEND", "Undelete.Example.com/Reddit"),
+		("REDLIB_DEFAULT_SHARE_LINK", "https://Example.org/Redlib"),
 	])]
 	fn test_options_in_any_case() {
 		write("redlib.toml", "REDLIB_SFW_ONLY = \"Off\"\nREDLIB_ROBOTS_DISABLE_INDEXING = \"On\"").unwrap();
@@ -595,6 +596,7 @@ mod tests {
 		assert_eq!(get_setting("REDLIB_BANNER"), Some("Hello World".into()));
 		assert_eq!(get_setting("REDLIB_DEFAULT_SUBSCRIPTIONS"), Some("Rust+Linux".into()));
 		assert_eq!(get_setting("REDLIB_FULL_URL"), Some("https://Example.com/Redlib".into()));
+		assert_eq!(get_setting("REDLIB_DEFAULT_SHARE_LINK"), Some("https://Example.org/Redlib".into()));
 		// only the host of the Pushshift frontend, its path may care
 		assert_eq!(get_setting("REDLIB_PUSHSHIFT_FRONTEND"), Some("undelete.example.com/Reddit".into()));
 	}

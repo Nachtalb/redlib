@@ -14,21 +14,28 @@ function copy(text) {
     return copied ? Promise.resolve() : Promise.reject();
 }
 
-document.addEventListener("click", (event) => {
-    const link = event.target.closest("a.share");
-    if (!link) return;
-    event.preventDefault();
-    if (navigator.share) {
-        navigator.share({ url: link.href, title: document.title }).catch(() => {});
-        return;
-    }
+// When copying fails too, show the address to copy by hand instead of leaving the page.
+function copyLink(link) {
     copy(link.href).then(
         () => {
             link.classList.add("copied");
             clearTimeout(link.copiedTimer);
             link.copiedTimer = setTimeout(() => link.classList.remove("copied"), 2000);
         },
-        () => location.assign(link.href),
+        () => prompt("Copy this link:", link.href),
     );
+}
+
+document.addEventListener("click", (event) => {
+    const link = event.target.closest("a.share");
+    if (!link) return;
+    event.preventDefault();
+    if (navigator.share) {
+        navigator.share({ url: link.href, title: document.title }).catch((error) => {
+            if (error.name !== "AbortError") copyLink(link);
+        });
+        return;
+    }
+    copyLink(link);
 });
 // @license-end
