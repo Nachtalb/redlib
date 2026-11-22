@@ -32,9 +32,15 @@ ENV CFLAGS_i686_unknown_linux_musl="-msse2" \
 # Rust links riscv64 musl dynamically by default, and the release image has no loader.
 ENV CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static"
 # mips64el is tier 3: Rust ships no std for it, so nightly builds one; LTO breaks its link.
-ENV CARGO_TARGET_MIPS64EL_UNKNOWN_LINUX_MUSLABI64_RUSTFLAGS="-C link-arg=-mxgot"
+# The release image has no musl loader, so link statically. A std built from source has no
+# self-contained crt files or libunwind.a: use the cross gcc's, with libgcc_eh as libunwind.
+ENV CARGO_TARGET_MIPS64EL_UNKNOWN_LINUX_MUSLABI64_RUSTFLAGS="-C target-feature=+crt-static -C link-self-contained=no -L native=/opt/mips64el-unwind -C link-arg=-mxgot"
+# libc 0.2.190 and 0.2.191 give mips64 the generic SOL_SOCKET and SO_ERROR values, so connect and
+# bind fail. Until a release has rust-lang/libc@299afed, std and redlib both use 0.2.189.
 RUN if [ "$CARGO_BUILD_TARGET" = mips64el-unknown-linux-muslabi64 ]; then \
-        rustup toolchain install nightly-2026-11-14 --profile minimal --component rust-src --no-self-update && rustup default nightly-2026-11-14; \
+        rustup toolchain install nightly-2026-10-17 --profile minimal --component rust-src --no-self-update && rustup default nightly-2026-10-17 \
+        && mkdir -p /opt/mips64el-unwind \
+        && ln -s "$(dirname "$($TARGET_CC -print-libgcc-file-name)")/libgcc_eh.a" /opt/mips64el-unwind/libunwind.a; \
     else \
         rustup toolchain install 1.99 --profile minimal --no-self-update --target $CARGO_BUILD_TARGET && rustup default 1.99; \
     fi
@@ -49,7 +55,8 @@ RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
     --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
     --mount=type=cache,id=redlib-target-${TARGETARCH}${TARGETVARIANT},target=/redlib/target \
     if [ "$CARGO_BUILD_TARGET" = mips64el-unknown-linux-muslabi64 ]; then \
-        export CARGO_PROFILE_RELEASE_LTO=false && set -- -Z build-std=std,panic_abort; \
+        export CARGO_PROFILE_RELEASE_LTO=false && cargo update -p libc --precise 0.2.189 \
+        && set -- -Z build-std=std,panic_abort; \
     fi && \
     cargo build --release --locked --bin redlib "$@" && cp target/$CARGO_BUILD_TARGET/release/redlib /usr/local/bin/redlib
 
