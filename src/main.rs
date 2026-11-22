@@ -17,6 +17,11 @@ use redlib::{config, duplicates, headers, instance_info, post, search, settings,
 
 use redlib::client::OAUTH_CLIENT;
 
+// musl's malloc serialises the tokio worker threads; the release binaries are static musl.
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 // Create Services
 
 // Required for the manifest to be valid

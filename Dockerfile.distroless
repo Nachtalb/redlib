@@ -51,14 +51,16 @@ COPY . ./
 ARG TARGETARCH
 ARG TARGETVARIANT
 ARG GIT_HASH=dev
+# Cargo features, e.g. `mimalloc`; each set gets its own target cache.
+ARG FEATURES=
 RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
     --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
-    --mount=type=cache,id=redlib-target-${TARGETARCH}${TARGETVARIANT},target=/redlib/target \
+    --mount=type=cache,id=redlib-target-${TARGETARCH}${TARGETVARIANT}${FEATURES:+-$FEATURES},target=/redlib/target \
     if [ "$CARGO_BUILD_TARGET" = mips64el-unknown-linux-muslabi64 ]; then \
         export CARGO_PROFILE_RELEASE_LTO=false && cargo update -p libc --precise 0.2.189 \
         && set -- -Z build-std=std,panic_abort; \
     fi && \
-    cargo build --release --locked --bin redlib "$@" && cp target/$CARGO_BUILD_TARGET/release/redlib /usr/local/bin/redlib
+    cargo build --release --locked --bin redlib --features "$FEATURES" "$@" && cp target/$CARGO_BUILD_TARGET/release/redlib /usr/local/bin/redlib
 
 ########################
 ## release image

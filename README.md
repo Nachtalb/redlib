@@ -104,7 +104,7 @@ This section covers multiple ways of deploying Redlib. Using Docker is recommend
 
 For configuration options, see [CONFIGURATION.md](CONFIGURATION.md).
 
-Images are on [ghcr.io](https://github.com/Nachtalb/redlib/pkgs/container/redlib) for `amd64`, `386`, `arm64`, `arm/v7`, `arm/v6`, `riscv64` and `mips64le`.
+Images are on [ghcr.io](https://github.com/Nachtalb/redlib/pkgs/container/redlib) for `amd64`, `386`, `arm64`, `arm/v7`, `arm/v6`, `riscv64` and `mips64le`. For `amd64` and `arm64` there are also `latest-mimalloc` and `sha-<commit>-mimalloc` tags, built with the mimalloc allocator: faster under load, but they hold more memory afterwards.
 
 <details>
 <summary><b>Docker Compose</b></summary>
@@ -148,7 +148,7 @@ systemctl --user status redlib.service  # check on it
 <details>
 <summary><b>Binary</b></summary>
 
-Grab a binary from [the latest release](https://github.com/Nachtalb/redlib/releases/latest), rebuilt on every push to `main`. It has static Linux builds for `x86_64`, `i686`, `aarch64`, `armv7`, `arm` (v6), `riscv64` and `mips64el`, plus macOS, Windows and Android builds that this fork doesn't test, and `SHA256SUMS`.
+Grab a binary from [the latest release](https://github.com/Nachtalb/redlib/releases/latest), rebuilt on every push to `main`. It has static Linux builds for `x86_64`, `i686`, `aarch64`, `armv7`, `arm` (v6), `riscv64` and `mips64el`, plus macOS, Windows and Android builds that this fork doesn't test, and `SHA256SUMS`. `redlib-x86_64-unknown-linux-musl-mimalloc` and `redlib-aarch64-unknown-linux-musl-mimalloc` are the mimalloc builds from the `-mimalloc` images.
 
 ```bash
 curl -fL -o redlib https://github.com/Nachtalb/redlib/releases/latest/download/redlib-x86_64-unknown-linux-musl  # pick your architecture
@@ -268,6 +268,7 @@ Redlib is configured with environment variables, a `redlib.toml` file or command
 ```bash
 git clone https://github.com/Nachtalb/redlib && cd redlib
 cargo build --release              # the binary ends up in target/release/redlib
+cargo build --release --features mimalloc  # optional: mimalloc allocator, faster under load, holds more memory
 ```
 
 Redlib talks to Reddit through [wreq](https://github.com/0x676e67/wreq), which uses [BoringSSL](https://boringssl.googlesource.com/boringssl/) with wreq's patches (via the [`btls-sys`](https://crates.io/crates/btls-sys) crate) so its TLS handshake looks like a real browser's. The BoringSSL source ships with the crate and is patched and compiled during the build, so you need `git`, `cmake`, a C/C++ compiler and `libclang` (for bindgen). Certificates are checked against Mozilla's trust store compiled into the binary.
