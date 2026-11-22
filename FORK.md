@@ -33,6 +33,7 @@ Bugs present in upstream Redlib that are fixed here:
 - **Post pages failed** with `Failed to parse page JSON data` when Reddit blocked them for anonymous clients. A block is now reported as a block instead of a JSON error.
 - **Text after a `redditstatic.com` link was mangled**: the rewrite regex matched to the end of the line and also caught other hosts (upstream `6aef54e`, `42c5d6f`).
 - **Bodies with many image links hung the page**: the preview-link rewrite re-scanned the whole body once per link, so a few hundred `i.redd.it` links took seconds of CPU. It now rewrites them in one pass.
+- **Lookalike hosts became broken local links**: a link to a host that starts with `i.redd.it`, `preview.redd.it` or `external-preview.redd.it`, such as `i.redd.it.example.org`, was rewritten to a dead path like `/img.example.org/a.jpg`. Only the Reddit hosts themselves are rewritten now.
 - **Subscriptions and filters were wiped** when saving a single setting ([redlib-org#562](https://github.com/redlib-org/redlib/issues/562)).
 - **Instance default post sort ignored** until the user saved their settings once ([redlib-org#521](https://github.com/redlib-org/redlib/pull/521)). With no default set, listings fall back to `hot` ([polak14 `19c6606`](https://github.com/polak14/redlib/commit/19c6606417babb0c082d9ee4948de5008475f45a)).
 - **Crash on a deleted or invalid comment link**: out-of-bounds access when a thread has no comments ([redlib-org#542](https://github.com/redlib-org/redlib/pull/542)).
