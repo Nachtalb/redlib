@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   build:
+    name: build (${{ matrix.platform }}${{ matrix.variant && format(', {0}', matrix.variant) || '' }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,6 +37,11 @@ jobs:
           - linux/arm/v6
           - linux/riscv64
           - linux/mips64le
+        variant: [""]
+        # Extra `-mimalloc` builds (cargo feature): faster under load, hold more memory.
+        include:
+          - { platform: linux/amd64, variant: mimalloc }
+          - { platform: linux/arm64, variant: mimalloc }
     steps:
       - name: Prepare
         run: |
@@ -45,6 +51,9 @@ jobs:
           echo "PLATFORM_PAIR=$pair" >> "$GITHUB_ENV"
           arch=${platform#linux/}
           echo "CACHE_ARCH=${arch//\//}" >> "$GITHUB_ENV"
+          variant=${{ matrix.variant }}
+          echo "SUFFIX=${variant:+-$variant}" >> "$GITHUB_ENV"
+          echo "VARIANT_PREFIX=${variant:+$variant-}" >> "$GITHUB_ENV"
 
       - name: Checkout
         uses: actions/checkout@v7
@@ -67,8 +76,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: cargo-cache
-          key: cargo-${{ env.PLATFORM_PAIR }}-${{ hashFiles('Cargo.lock') }}
+          key: cargo-${{ env.VARIANT_PREFIX }}${{ env.PLATFORM_PAIR }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
+            cargo-${{ env.VARIANT_PREFIX }}${{ env.PLATFORM_PAIR }}-
             cargo-${{ env.PLATFORM_PAIR }}-
 
       - name: Inject cargo cache into the build
@@ -81,7 +91,7 @@ jobs:
             {
               "cargo-cache/registry": { "target": "/root/.cargo/registry", "id": "cargo-registry" },
               "cargo-cache/git": { "target": "/root/.cargo/git", "id": "cargo-git" },
-              "cargo-cache/target": { "target": "/redlib/target", "id": "redlib-target-${{ env.CACHE_ARCH }}" }
+              "cargo-cache/target": { "target": "/redlib/target", "id": "redlib-target-${{ env.CACHE_ARCH }}${{ env.SUFFIX }}" }
             }
 
       - name: Login to GHCR
@@ -100,10 +110,11 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: |
             GIT_HASH=${{ github.sha }}
+            FEATURES=${{ matrix.variant }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=registry,ref=${{ env.IMAGE }}-buildcache:${{ env.PLATFORM_PAIR }}
-          cache-to: type=registry,ref=${{ env.IMAGE }}-buildcache:${{ env.PLATFORM_PAIR }},mode=max,ignore-error=true
+          cache-from: type=registry,ref=${{ env.IMAGE }}-buildcache:${{ env.PLATFORM_PAIR }}${{ env.SUFFIX }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}-buildcache:${{ env.PLATFORM_PAIR }}${{ env.SUFFIX }},mode=max,ignore-error=true
 
       - name: Export digest
         run: |
@@ -114,7 +125,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v7
         with:
-          name: digests-${{ env.PLATFORM_PAIR }}
+          name: digests-${{ env.VARIANT_PREFIX }}${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -132,7 +143,14 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
-          pattern: digests-*
+          pattern: digests-linux-*
+          merge-multiple: true
+
+      - name: Download mimalloc digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests-mimalloc
+          pattern: digests-mimalloc-*
           merge-multiple: true
 
       - name: Login to GHCR
@@ -154,14 +172,33 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Create manifest list and push
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+      - name: Docker meta (mimalloc)
+        id: meta-mimalloc
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+          flavor: suffix=-mimalloc,onlatest=true
 
-      - name: Inspect image
-        run: docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+      - name: Create manifest lists and push
+        working-directory: ${{ runner.temp }}
+        env:
+          TAGS: ${{ steps.meta.outputs.json }}
+          TAGS_MIMALLOC: ${{ steps.meta-mimalloc.outputs.json }}
+        run: |
+          create() {
+            docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$1") \
+              $(cd "$2" && printf "$IMAGE@sha256:%s " *)
+          }
+          create "$TAGS" digests
+          create "$TAGS_MIMALLOC" digests-mimalloc
+
+      - name: Inspect images
+        run: |
+          docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta-mimalloc.outputs.version }}
 
   # Targets Docker can't build. Their Cargo caches live in the Actions cache.
   native:
@@ -251,6 +288,11 @@ jobs:
             docker cp "$id:/usr/local/bin/redlib" "dist/redlib-${pair#*=}"
             docker rm "$id"
           done
+          for pair in amd64=x86_64-unknown-linux-musl arm64=aarch64-unknown-linux-musl; do
+            id=$(docker create --platform "linux/${pair%%=*}" "$image-mimalloc")
+            docker cp "$id:/usr/local/bin/redlib" "dist/redlib-${pair#*=}-mimalloc"
+            docker rm "$id"
+          done
 
       - name: Download the native binaries
         uses: actions/download-artifact@v8
@@ -269,7 +311,7 @@ jobs:
           title="Latest build ($short)"
           notes="Built from [\`$short\`]($GITHUB_SERVER_URL/$GH_REPO/commit/$GITHUB_SHA) ($subject) on $(date -u '+%Y-%m-%d %H:%M') UTC.
 
-          The static Linux binaries are the same ones as in the \`ghcr.io/${GITHUB_REPOSITORY,,}:sha-$short\` image. The macOS, Windows and Android builds are not tested by this fork. This release is replaced on every push to \`main\`."
+          The static Linux binaries are the same ones as in the \`ghcr.io/${GITHUB_REPOSITORY,,}:sha-$short\` image, the \`-mimalloc\` ones as in \`sha-$short-mimalloc\` (faster under load, hold more memory). The macOS, Windows and Android builds are not tested by this fork. This release is replaced on every push to \`main\`."
           if gh release view latest > /dev/null 2>&1; then
             gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest" -f sha="$GITHUB_SHA" -F force=true
             gh release upload latest dist/* --clobber
