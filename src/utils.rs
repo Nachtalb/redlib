@@ -1371,8 +1371,8 @@ pub fn render_bullet_lists(input_text: &str) -> String {
 
 // These are links we want to replace in-body
 static REDDIT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"href="(https|http|)://(www\.|old\.|np\.|amp\.|new\.|)(reddit\.com|redd\.it)/"#).unwrap());
-// The second group stops `i.redd.it.example.org` from matching.
-static REDDIT_PREVIEW_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://(external-preview|preview|i)\.redd\.it([^\w.-]|$)").unwrap());
+// The second group stops `i.redd.it.example.org` and `i.redd.it@example.org` from matching.
+static REDDIT_PREVIEW_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://(external-preview|preview|i)\.redd\.it([^\w.@:-]|$)").unwrap());
 static REDDIT_EMOJI_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"https?://(?:www\.)?redditstatic\.com/[^\s"'<>]*"#).unwrap());
 // A preview link up to its first `</a>`, and the `</p>` if that closes the paragraph
 static REDDIT_PREVIEW_PARAGRAPH_REGEX: LazyLock<Regex> =
@@ -2392,6 +2392,8 @@ mod tests {
 
 		let lookalike = r#"<a href="https://i.redd.it.example.org/a.jpg">https://preview.redd.it-example.org/a.jpg</a>"#;
 		assert_eq!(rewrite_urls(lookalike), lookalike);
+		let userinfo = r#"<a href="https://i.redd.it@example.org/a.jpg">https://preview.redd.it:x@example.org/a.jpg</a>"#;
+		assert_eq!(rewrite_urls(userinfo), userinfo);
 		assert_eq!(rewrite_urls("see https://i.redd.it"), "see /img");
 	}
 
