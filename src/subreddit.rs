@@ -3,7 +3,7 @@
 use crate::body::Body;
 use crate::utils::{
 	build_rss_items, catch_random, clean_url, enable_rss, error, filter_posts, format_num, format_url, get_filters, info, nsfw_landing, param, redirect, rewrite_urls,
-	rss_page_link, rss_page_path, rss_response, setting, setting_or_default, should_be_nsfw_gated, template, val, Link, Post, Preferences, Subreddit, Widget, RSS_LISTING_SORTS,
+	rss_page_link, rss_page_path, rss_response, setting, should_be_nsfw_gated, template, val, Link, Post, Preferences, Subreddit, Widget, RSS_LISTING_SORTS,
 };
 use crate::{backends::json, server::RequestExt, server::ResponseExt};
 use askama::Template;
@@ -53,6 +53,12 @@ struct WallTemplate {
 	url: String,
 }
 
+/// The sort becomes part of the path requested from Reddit, so only the
+/// listings a subreddit has are passed on: its sorts and its latest comments.
+fn is_listing_sort(sort: &str) -> bool {
+	sort == "comments" || RSS_LISTING_SORTS.contains(&sort)
+}
+
 // SERVICES
 pub async fn community(req: Request<Body>) -> Result<Response<Body>, String> {
 	let prefs = Preferences::new(&req);
@@ -61,8 +67,11 @@ pub async fn community(req: Request<Body>) -> Result<Response<Body>, String> {
 	let subscribed = setting(&req, "subscriptions");
 	let front_page = setting(&req, "front_page");
 	let remove_default_feeds = setting(&req, "remove_default_feeds") == "on";
-	let post_sort = setting_or_default(&req, "post_sort", "hot".to_string());
+	let post_sort = Some(setting(&req, "post_sort")).filter(|sort| is_listing_sort(sort)).unwrap_or_else(|| "hot".to_string());
 	let sort = req.param("sort").unwrap_or_else(|| req.param("id").unwrap_or(post_sort));
+	if !is_listing_sort(&sort) {
+		return error(req, "Nothing here").await;
+	}
 
 	let sub_name = req.param("sub").unwrap_or(if front_page == "default" || front_page.is_empty() {
 		if subscribed.is_empty() {
@@ -749,7 +758,7 @@ pub async fn rss(req: Request<Body>) -> Result<Response<Body>, String> {
 		}
 	};
 	let sort = sort.unwrap_or_else(|| Some(setting(&req, "post_sort")).filter(|s| !s.is_empty()).unwrap_or_else(|| "hot".to_string()));
-	if sort != "comments" && !RSS_LISTING_SORTS.contains(&sort.as_str()) {
+	if !is_listing_sort(&sort) {
 		return error(req, "Unknown feed sort").await;
 	}
 
@@ -799,6 +808,25 @@ fn default_timeframe(sort: &str, query: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+	#[tokio::test]
+	async fn test_only_listing_sorts_are_requested() {
+		for sort in ["about", "about%2fmodqueue", "submit", "wiki%2f..%2f..%2fprefs"] {
+			let mut req = Request::builder().uri(format!("/r/rust/{sort}")).body(Body::empty()).unwrap();
+			let mut params = route_recognizer::Params::new();
+			params.insert("sub".to_string(), "rust".to_string());
+			params.insert("sort".to_string(), sort.to_string());
+			req.set_params(params);
+			// answered before any request to Reddit
+			let response = community(req).await.unwrap();
+			assert_eq!(response.status(), 404, "{sort}");
+			let body = response.into_body().collect_bytes().await.unwrap();
+			assert!(String::from_utf8_lossy(&body).contains("Nothing here"), "{sort}");
+		}
+		for sort in ["hot", "new", "top", "rising", "controversial", "best", "comments"] {
+			assert!(is_listing_sort(sort), "{sort}");
+		}
+	}
+
 	#[test]
 	fn test_top_defaults_to_today() {
 		assert_eq!(default_timeframe("top", ""), "&t=day");
