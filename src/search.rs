@@ -123,7 +123,7 @@ struct SearchTemplate {
 }
 
 /// Regex matched against search queries to determine if they are reddit urls.
-static REDDIT_URL_MATCH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^https?://([^\./]+\.)*reddit.com/").unwrap());
+static REDDIT_URL_MATCH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^https?://([^\./]+\.)*reddit\.com/").unwrap());
 
 // SERVICES
 pub async fn find(req: Request<Body>) -> Result<Response<Body>, String> {
@@ -356,6 +356,16 @@ fn user(user: &Value) -> User {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn test_reddit_url_match_needs_reddit_com() {
+		for url in ["https://www.reddit.com/r/rust", "http://reddit.com/r/rust", "https://old.reddit.com/r/rust"] {
+			assert_eq!(REDDIT_URL_MATCH.replace(url, ""), "r/rust", "{url}");
+		}
+		for url in ["https://www.redditxcom/r/rust", "https://notreddit.com/r/rust", "https://reddit.com.example.org/r/rust"] {
+			assert_eq!(REDDIT_URL_MATCH.replace(url, ""), url, "{url}");
+		}
+	}
 
 	#[test]
 	fn test_tabs() {
