@@ -35,6 +35,20 @@ impl Body {
 	pub async fn collect_bytes(self) -> Result<Bytes, BoxError> {
 		Ok(self.0.collect().await?.to_bytes())
 	}
+
+	/// `collect_bytes` for a client's body: fails once it is larger than `limit` bytes instead of buffering it all.
+	pub async fn collect_bytes_up_to(mut self, limit: usize) -> Result<Bytes, BoxError> {
+		let mut bytes = Vec::new();
+		while let Some(frame) = self.0.frame().await {
+			if let Ok(data) = frame?.into_data() {
+				if bytes.len() + data.len() > limit {
+					return Err("body is too large".into());
+				}
+				bytes.extend_from_slice(&data);
+			}
+		}
+		Ok(bytes.into())
+	}
 }
 
 impl Default for Body {
@@ -109,6 +123,14 @@ mod tests {
 		let body = Body::from("hello world".to_string());
 		assert_eq!(http_body::Body::size_hint(&body).exact(), Some(11));
 		assert_eq!(block_on(body.collect_bytes()).unwrap(), Bytes::from_static(b"hello world"));
+	}
+
+	#[test]
+	fn limited_collect_refuses_a_larger_body() {
+		assert_eq!(block_on(Body::from("hello".to_string()).collect_bytes_up_to(5)).unwrap(), Bytes::from_static(b"hello"));
+		assert!(block_on(Body::from("hello!".to_string()).collect_bytes_up_to(5)).is_err());
+		let chunks = futures_lite::stream::iter(vec![Ok::<_, std::io::Error>(Bytes::from_static(b"abc")), Ok(Bytes::from_static(b"def"))]);
+		assert!(block_on(Body::from_stream(chunks).collect_bytes_up_to(5)).is_err());
 	}
 
 	#[test]
