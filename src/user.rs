@@ -36,6 +36,11 @@ struct UserTemplate {
 // FUNCTIONS
 pub async fn profile(req: Request<Body>) -> Result<Response<Body>, String> {
 	let listing = req.param("listing").unwrap_or_else(|| "overview".to_string());
+	// The listing becomes part of the path requested from Reddit, which serves a
+	// session its own account's private listings (saved, upvoted, hidden) too.
+	if !RSS_USER_LISTINGS.contains(&listing.as_str()) {
+		return error(req, "Nothing here").await;
+	}
 
 	// Build the Reddit JSON API path
 	let path = format!(
@@ -168,6 +173,22 @@ pub async fn rss(req: Request<Body>) -> Result<Response<Body>, String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[tokio::test]
+	async fn test_only_public_listings_are_requested() {
+		for listing in ["saved", "upvoted", "hidden", "about%2fmodqueue"] {
+			let mut req = Request::new(Body::empty());
+			let mut params = route_recognizer::Params::new();
+			params.insert("name".to_string(), "spez".to_string());
+			params.insert("listing".to_string(), listing.to_string());
+			req.set_params(params);
+			// answered before any request to Reddit
+			let response = profile(req).await.unwrap();
+			assert_eq!(response.status(), 404, "{listing}");
+			let body = response.into_body().collect_bytes().await.unwrap();
+			assert!(String::from_utf8_lossy(&body).contains("Nothing here"), "{listing}");
+		}
+	}
 
 	#[test]
 	fn test_fetching_user() {

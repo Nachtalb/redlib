@@ -556,6 +556,14 @@ pub async fn canonical_path(path: String, tries: i8) -> Result<Option<String>, S
 	}
 }
 
+/// Whether the proxy passes a response of this `Content-Type` on as it is:
+/// images, video, audio, and the playlists and captions of a video.
+fn is_media_type(content_type: &str) -> bool {
+	let essence = content_type.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
+	["image/", "video/", "audio/"].iter().any(|kind| essence.starts_with(kind))
+		|| ["application/vnd.apple.mpegurl", "application/x-mpegurl", "text/vtt"].contains(&essence.as_str())
+}
+
 pub async fn proxy(req: HyperRequest<Body>, format: &str) -> Result<HyperResponse<Body>, String> {
 	let mut url = format!("{format}?{}", req.uri().query().unwrap_or_default());
 
@@ -606,6 +614,23 @@ pub async fn proxy(req: HyperRequest<Body>, format: &str) -> Result<HyperRespons
 			rm("x-reddit-video-features");
 			rm("Nel");
 			rm("Report-To");
+			// Cookies of Reddit's hosts are not this instance's to set
+			rm("set-cookie");
+
+			// Anything that isn't media is served as a download: Reddit's hosts also
+			// have scripts, styles and pages, and through the proxy they would come
+			// from this instance's own origin, which its Content-Security-Policy trusts.
+			let content_type = headers.get(wreq_header::CONTENT_TYPE).map(|value| value.to_str().unwrap_or_default().to_string());
+			let passed_on = match content_type {
+				Some(content_type) => is_media_type(&content_type),
+				// A 304 has none, and its headers replace the cached ones
+				None => res.status() == wreq::StatusCode::NOT_MODIFIED,
+			};
+			if !passed_on {
+				res
+					.headers_mut()
+					.insert(wreq_header::CONTENT_TYPE, wreq_header::HeaderValue::from_static("application/octet-stream"));
+			}
 
 			res.into_hyper_response()
 		})
@@ -789,6 +814,35 @@ grOg7/TIT6QE0pDX4NMn6NqkAiARp8TS/g6Pmz3BaKRf5UH/7ifLPrQ9z+rk+LT3\n\
 +puoPQ==\n\
 -----END CERTIFICATE-----\n\
 ";
+
+	#[test]
+	fn test_proxy_passes_on_media_types_only() {
+		for media in [
+			"image/png",
+			"image/gif",
+			"Image/WebP",
+			"video/mp4",
+			"video/MP2T",
+			"audio/mp4",
+			"application/x-mpegURL",
+			"application/vnd.apple.mpegurl; charset=utf-8",
+			"text/vtt",
+		] {
+			assert!(is_media_type(media), "{media}");
+		}
+		for other in [
+			"text/html; charset=utf-8",
+			"text/javascript",
+			"application/javascript",
+			"text/css",
+			"application/json",
+			"application/xml",
+			"text/plain",
+			"",
+		] {
+			assert!(!is_media_type(other), "{other}");
+		}
+	}
 
 	#[test]
 	fn test_ca_store_needs_a_certificate() {

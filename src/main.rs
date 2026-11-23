@@ -352,15 +352,21 @@ async fn main() {
 		.at("/packaged-external/*path")
 		.get(|r| proxy(r, "https://external-packaged-media.redd.it/{path}").boxed());
 	app.at("/img/*path").get(|r| proxy(r, "https://i.redd.it/{path}").boxed());
-	app.at("/thumb/:point/:id").get(|r| proxy(r, "https://{point}.thumbs.redditmedia.com/{id}").boxed());
+	// One route per upstream host: a host built from the path could be any name under the domain
+	app.at("/thumb/a/:id").get(|r| proxy(r, "https://a.thumbs.redditmedia.com/{id}").boxed());
+	app.at("/thumb/b/:id").get(|r| proxy(r, "https://b.thumbs.redditmedia.com/{id}").boxed());
 	app.at("/emoji/:id/:name").get(|r| proxy(r, "https://emoji.redditmedia.com/{id}/{name}").boxed());
 	app
 		.at("/emote/:subreddit_id/:filename")
 		.get(|r| proxy(r, "https://reddit-econ-prod-assets-permanent.s3.amazonaws.com/asset-manager/{subreddit_id}/{filename}").boxed());
 	app
-		.at("/preview/:loc/award_images/:fullname/:id")
-		.get(|r| proxy(r, "https://{loc}view.redd.it/award_images/{fullname}/{id}").boxed());
-	app.at("/preview/:loc/:id").get(|r| proxy(r, "https://{loc}view.redd.it/{id}").boxed());
+		.at("/preview/pre/award_images/:fullname/:id")
+		.get(|r| proxy(r, "https://preview.redd.it/award_images/{fullname}/{id}").boxed());
+	app
+		.at("/preview/external-pre/award_images/:fullname/:id")
+		.get(|r| proxy(r, "https://external-preview.redd.it/award_images/{fullname}/{id}").boxed());
+	app.at("/preview/pre/:id").get(|r| proxy(r, "https://preview.redd.it/{id}").boxed());
+	app.at("/preview/external-pre/:id").get(|r| proxy(r, "https://external-preview.redd.it/{id}").boxed());
 	app.at("/style/*path").get(|r| proxy(r, "https://styles.redditmedia.com/{path}").boxed());
 	app.at("/static/*path").get(|r| proxy(r, "https://www.redditstatic.com/{path}").boxed());
 	if redlib::utils::enable_giphy() {
