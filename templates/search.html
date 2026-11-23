@@ -12,7 +12,7 @@
         <form id="search_sort">
             <input type="hidden" name="type" value="{{ params.tab.name }}">
             <div class="search_widget_divider_box">
-                <input id="search" type="text" name="q" placeholder="Search" value="{{ params.q|safe }}" title="Search redlib">
+                <input id="search" type="text" name="q" placeholder="Search" value="{{ params.q }}" title="Search redlib">
                 <div class="search_widget_divider_box">
                     {% if sub != "" %}
                         <div id="inside">
@@ -61,7 +61,7 @@
             <div id="search_subreddits"{% if params.tab.name == "communities" || params.tab.name == "people" %} class="search_results"{% endif %}>
                 {% for subreddit in subreddits %}
                     <a href="{{ subreddit.url }}" class="search_subreddit">
-                        <div class="search_subreddit_left">{% if subreddit.icon != "" %}<img loading="lazy" src="{{ subreddit.icon|safe }}" alt="r/{{ subreddit.name }} icon">{% else %}<span class="default_sub_icon" aria-hidden="true">r/</span>{% endif %}</div>
+                        <div class="search_subreddit_left">{% if subreddit.icon != "" %}<img loading="lazy" src="{{ subreddit.icon }}" alt="r/{{ subreddit.name }} icon">{% else %}<span class="default_sub_icon" aria-hidden="true">r/</span>{% endif %}</div>
                         <div class="search_subreddit_right">
                             <p class="search_subreddit_header">
                                 <span class="search_subreddit_name">r/{{ subreddit.name }}</span>
@@ -74,7 +74,7 @@
                 {% endfor %}
                 {% for user in users %}
                     <a href="/user/{{ user.name }}" class="search_subreddit">
-                        <div class="search_subreddit_left">{% if user.icon != "" %}<img loading="lazy" src="{{ user.icon|safe }}" alt="u/{{ user.name }} icon">{% endif %}</div>
+                        <div class="search_subreddit_left">{% if user.icon != "" %}<img loading="lazy" src="{{ user.icon }}" alt="u/{{ user.name }} icon">{% endif %}</div>
                         <div class="search_subreddit_right">
                             <p class="search_subreddit_header">
                                 <span class="search_subreddit_name">u/{{ user.name }}</span>
