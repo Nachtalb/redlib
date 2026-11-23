@@ -467,7 +467,9 @@ async fn new_boilerplate(
 /// Accept-Encoding: gzip, compress, br
 /// Accept-Encoding: br;q=1.0, gzip;q=0.8, *;q=0.1
 /// ```
-#[cached]
+///
+/// Not cached: the header is the client's, and a cache keyed on it grows with
+/// every new value a client sends.
 fn determine_compressor(accept_encoding: String) -> Option<CompressionType> {
 	if accept_encoding.is_empty() {
 		return None;
