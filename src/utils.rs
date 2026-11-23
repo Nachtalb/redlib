@@ -1399,6 +1399,25 @@ pub fn body_html(item: &Value, markdown_key: &str, html_key: &str) -> String {
 	}
 }
 
+/// The schemes a link in a post or comment may have, as in Reddit's own markdown renderer.
+const LINK_SCHEMES: [&str; 12] = ["http", "https", "ftp", "mailto", "git", "steam", "irc", "ircs", "news", "mumble", "ssh", "ts3server"];
+
+/// Whether `url` may be a link target or image source in rendered markdown
+/// and richtext: a relative URL or one of `LINK_SCHEMES`, so no `javascript:`
+/// or `data:`. Browsers drop tabs and line breaks from a URL before they read
+/// its scheme, so those are refused rather than looked through.
+pub fn is_safe_link(url: &str) -> bool {
+	let url = url.trim();
+	if url.contains(char::is_control) {
+		return false;
+	}
+	// The scheme ends at the first `:`, unless the path, query or fragment starts before it
+	match url.split_once(':') {
+		Some((scheme, _)) if !scheme.contains(['/', '?', '#']) => LINK_SCHEMES.iter().any(|allowed| scheme.eq_ignore_ascii_case(allowed)),
+		_ => true,
+	}
+}
+
 /// Renders Reddit markdown, with syntax highlighting in code blocks.
 pub fn markdown_html(markdown: &str) -> String {
 	use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
@@ -1421,6 +1440,19 @@ pub fn markdown_html(markdown: &str) -> String {
 		Event::End(TagEnd::CodeBlock) => code.take().map(|(lang, text)| Event::Html(highlight(&lang, &text).into())),
 		// Reddit shows HTML in markdown as text
 		Event::Html(html) | Event::InlineHtml(html) => Some(Event::Text(html)),
+		// The parser takes any scheme; Reddit's HTML, which this stands in for, doesn't
+		Event::Start(Tag::Link { link_type, dest_url, title, id }) if !is_safe_link(&dest_url) => Some(Event::Start(Tag::Link {
+			link_type,
+			dest_url: "".into(),
+			title,
+			id,
+		})),
+		Event::Start(Tag::Image { link_type, dest_url, title, id }) if !is_safe_link(&dest_url) => Some(Event::Start(Tag::Image {
+			link_type,
+			dest_url: "".into(),
+			title,
+			id,
+		})),
 		event => Some(event),
 	});
 	let mut html = String::from("<div class=\"md\">");
@@ -1565,7 +1597,9 @@ pub fn rewrite_emotes(media_metadata: &Value, comment: String) -> String {
 		index -= 1;
 
 		// Convert our current index in id_vec into a string so we can search through it with regex
-		let current_id = id_vec[index].to_string();
+		let Some(current_id) = id_vec.get(index).map(ToString::to_string) else {
+			continue;
+		};
 
 		/* The ID number can be multiple lengths, so we capture it with regex.
 		We also want to only attempt anything when we get matches to avoid panicking */
@@ -1573,19 +1607,21 @@ pub fn rewrite_emotes(media_metadata: &Value, comment: String) -> String {
 			// Format the ID to include the colons it has in the comment text
 			let id = format!(":{}:", &id_capture[1]);
 
-			// Convert current link to string to search through it with the regex
-			let link = link_vec[index].to_string();
+			// The link as text to search through it with the regex
+			let link = link_vec[index].as_str().unwrap_or_default();
 
 			// Make sure we only do operations when we get matches, otherwise we panic when trying to access the first match
-			if let Some(link_capture) = REDDIT_EMOTE_LINK_REGEX.captures(&link) {
+			if let Some(link_capture) = REDDIT_EMOTE_LINK_REGEX.captures(link) {
 				/* Reddit sends a size for the image based on whether it's alone or accompanied by text.
 				It's a good idea and makes everything look nicer, so we'll do the same. */
-				let size = media_metadata.json_path(&size_path).first().unwrap().to_string();
+				let Some(size) = media_metadata.json_path(&size_path).first().and_then(Value::as_u64) else {
+					continue;
+				};
 
 				// Replace the ID we found earlier in the comment with the respective image and it's link from the regex capture
 				let to_replace_with = format!(
-					"<img loading=\"lazy\" src=\"/emote/{} width=\"{size}\" height=\"{size}\" style=\"vertical-align:text-bottom\">",
-					&link_capture[1]
+					"<img loading=\"lazy\" src=\"/emote/{}\" width=\"{size}\" height=\"{size}\" style=\"vertical-align:text-bottom\">",
+					htmlescape::encode_minimal(&link_capture[1])
 				);
 
 				// Inside the comment replace the ID we found with the string that will embed the image
@@ -2252,6 +2288,50 @@ mod tests {
 	}
 
 	#[test]
+	fn test_is_safe_link() {
+		for safe in [
+			"https://example.org/a?b=c:d#e",
+			"HTTP://example.org",
+			" https://example.org ",
+			"mailto:a@example.org",
+			"steam://run/440",
+			"/r/rust",
+			"//example.org/a",
+			"#wiki_rules",
+			"wiki/index",
+			"?sort=new&t=1:2",
+			"",
+		] {
+			assert!(super::is_safe_link(safe), "{safe:?}");
+		}
+		for unsafe_link in [
+			"javascript:alert(1)",
+			"JavaScript:alert(1)",
+			" javascript:alert(1)",
+			"java\tscript:alert(1)",
+			"java\nscript:alert(1)",
+			"\u{1}javascript:alert(1)",
+			"data:text/html,<script>alert(1)</script>",
+			"vbscript:x",
+			"blob:https://example.org/x",
+			"https\t://example.org",
+		] {
+			assert!(!super::is_safe_link(unsafe_link), "{unsafe_link:?}");
+		}
+	}
+
+	#[test]
+	fn test_markdown_links_only_safe_schemes() {
+		let html = crate::utils::markdown_html(
+			"```\nx\n```\n\n[a](javascript:alert(1)) [b](https://example.org/b) [c](/r/rust) ![d](data:image/svg+xml,x) ![e](https://i.redd.it/e.png) <javascript:alert(2)>",
+		);
+		assert!(!html.contains("href=\"javascript") && !html.contains("src=\"data"), "{html}");
+		assert!(html.contains(r#"<a href="">a</a>"#), "{html}");
+		assert!(html.contains(r#"<a href="https://example.org/b">b</a> <a href="/r/rust">c</a>"#), "{html}");
+		assert!(html.contains(r#"<img src="" alt="d" /> <img src="https://i.redd.it/e.png" alt="e" />"#), "{html}");
+	}
+
+	#[test]
 	fn test_body_html_renders_fenced_code_from_markdown() {
 		let post = serde_json::json!({ "data": { "selftext": "```\nx\n```", "selftext_html": "<p>```\nx\n```</p>" } });
 		assert_eq!(
@@ -2500,6 +2580,21 @@ mod tests {
 		let comment_input = r#"<div class="comment_body "><div class="md"><p>:2028:</p></div></div>"#;
 		let output = r#"<div class="comment_body "><div class="md"><p><img loading="lazy" src="/emote/t5_31hpy/PW6WsOaLcd.png" width="60" height="60" style="vertical-align:text-bottom"></p></div></div>"#;
 		assert_eq!(rewrite_emotes(&json_input, comment_input.to_string()), output);
+	}
+
+	#[test]
+	fn test_emote_metadata_cannot_add_markup_or_panic() {
+		let comment = "<p>:1:</p>";
+		let emote = |link: &str, size: Value| json!({ "emote|t5_x|1": { "id": "emote|t5_x|1", "s": { "u": link, "y": size } } });
+		let link = "https://reddit-econ-prod-assets-permanent.s3.amazonaws.com/asset-manager/t5_x/a.png";
+		assert_eq!(
+			rewrite_emotes(&emote(&format!("{link}\" onerror=\"alert(1)"), json!(20)), comment.to_string()),
+			r#"<p><img loading="lazy" src="/emote/t5_x/a.png&quot; onerror=&quot;alert(1)" width="20" height="20" style="vertical-align:text-bottom"></p>"#
+		);
+		// A size that isn't a number, no size, and a link without an id
+		assert_eq!(rewrite_emotes(&emote(link, json!("20\" onload=\"x")), comment.to_string()), comment);
+		assert_eq!(rewrite_emotes(&json!({ "a": { "id": "emote|t5_x|1", "s": { "u": link } } }), comment.to_string()), comment);
+		assert_eq!(rewrite_emotes(&json!({ "a": { "s": { "u": link, "y": 20 } } }), comment.to_string()), comment);
 	}
 
 	#[test]

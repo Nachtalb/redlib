@@ -8,7 +8,7 @@
 use super::{json as reddit_json, Backend, Failure, Fetch, Kind};
 use crate::client::{CLIENT, OAUTH_CLIENT};
 use crate::oauth::force_refresh_token;
-use crate::utils::{enable_gql, format_url, param};
+use crate::utils::{enable_gql, format_url, is_safe_link, param};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::DateTime;
 use log::{debug, warn};
@@ -142,10 +142,10 @@ fn listing(children: Vec<Value>) -> Value {
 	json_value!({ "kind": "Listing", "data": { "children": children } })
 }
 
-/// Escaped URL attribute value, proxied through Redlib for Reddit media. Empty for `javascript:` URLs.
+/// Escaped URL attribute value, proxied through Redlib for Reddit media. Empty for `javascript:` and other unsafe URLs.
 fn url_attr(value: Option<&str>) -> String {
 	let value = value.unwrap_or_default().trim();
-	if value.to_lowercase().starts_with("javascript:") {
+	if !is_safe_link(value) {
 		return String::new();
 	}
 	htmlescape::encode_minimal(&format_url(value))
@@ -1173,6 +1173,8 @@ mod tests {
 			{ "e": "par", "c": [
 				{ "e": "text", "t": "a <b> ünï bold", "f": [[1, 10, 4], [3, 12, 2]] },
 				{ "e": "link", "t": "x", "u": "javascript:alert(1)", "a": "t\"" },
+				{ "e": "link", "t": "y", "u": "java\tscript:alert(1)" },
+				{ "e": "link", "t": "z", "u": "data:text/html,x" },
 				{ "e": "r/", "t": "rust", "l": true },
 				{ "e": "spoilertext", "c": [{ "e": "text", "t": "s" }] },
 			]},
@@ -1186,7 +1188,7 @@ mod tests {
 		assert_eq!(
 			render(&doc, &media),
 			concat!(
-				r#"<p>a &lt;b&gt; ünï <strong>bo</strong><strong><em>ld</em></strong><a href="" title="t&quot;">x</a><a href="/r/rust">/r/rust</a><span class="md-spoiler-text">s</span></p>"#,
+				r#"<p>a &lt;b&gt; ünï <strong>bo</strong><strong><em>ld</em></strong><a href="" title="t&quot;">x</a><a href="">y</a><a href="">z</a><a href="/r/rust">/r/rust</a><span class="md-spoiler-text">s</span></p>"#,
 				r#"<figure><a href="/preview/external-pre/g.gif?s=1&amp;a=2"><img src="/preview/external-pre/g.gif?s=1&amp;a=2" loading="lazy"></a></figure>"#,
 				"<pre><code>&lt;x&gt;\ny</code></pre>",
 				"<ol><li>i</li></ol>",

@@ -123,7 +123,7 @@ struct SearchTemplate {
 }
 
 /// Regex matched against search queries to determine if they are reddit urls.
-static REDDIT_URL_MATCH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^https?://([^\./]+\.)*reddit.com/").unwrap());
+static REDDIT_URL_MATCH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^https?://([^\./]+\.)*reddit\.com/").unwrap());
 
 // SERVICES
 pub async fn find(req: Request<Body>) -> Result<Response<Body>, String> {
@@ -178,7 +178,7 @@ pub async fn find(req: Request<Body>) -> Result<Response<Body>, String> {
 		users: Vec::new(),
 		tabs: &TABS,
 		params: SearchParams {
-			q: query.replace('"', "&quot;"),
+			q: query.clone(),
 			q_url: encode(&query),
 			tab,
 			sort,
@@ -198,7 +198,7 @@ pub async fn find(req: Request<Body>) -> Result<Response<Body>, String> {
 
 	if tab.name == "communities" || tab.name == "people" {
 		let kind = if tab.name == "communities" { "subreddits" } else { "users" };
-		let response = match json(format!("/{kind}/search.json?q={}&after={}{nsfw_results}", encode(&query), encode(&after)), false).await {
+		let response = match json(format!("/{kind}/search.json?q={}&after={}{nsfw_results}&raw_json=1", encode(&query), encode(&after)), false).await {
 			Ok(response) => response,
 			Err(msg) => return error(req, &msg).await,
 		};
@@ -311,7 +311,7 @@ pub async fn rss(req: Request<Body>) -> Result<Response<Body>, String> {
 
 /// The three subreddits that match `q` best.
 async fn search_subreddits(q: &str) -> Vec<Subreddit> {
-	let subreddit_search_path = format!("/subreddits/search.json?q={}&limit=3", encode(q));
+	let subreddit_search_path = format!("/subreddits/search.json?q={}&limit=3&raw_json=1", encode(q));
 
 	// Send a request to the url
 	json(subreddit_search_path, false).await.unwrap_or_default()["data"]["children"]
@@ -356,6 +356,16 @@ fn user(user: &Value) -> User {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn test_reddit_url_match_needs_reddit_com() {
+		for url in ["https://www.reddit.com/r/rust", "http://reddit.com/r/rust", "https://old.reddit.com/r/rust"] {
+			assert_eq!(REDDIT_URL_MATCH.replace(url, ""), "r/rust", "{url}");
+		}
+		for url in ["https://www.redditxcom/r/rust", "https://notreddit.com/r/rust", "https://reddit.com.example.org/r/rust"] {
+			assert_eq!(REDDIT_URL_MATCH.replace(url, ""), url, "{url}");
+		}
+	}
 
 	#[test]
 	fn test_tabs() {
@@ -403,6 +413,23 @@ mod tests {
 
 	fn render(typed: &str, sort: &str, restrict_sr: &str) -> String {
 		page(typed, sort, restrict_sr).render().unwrap()
+	}
+
+	#[test]
+	fn test_query_and_icons_are_escaped() {
+		let mut page = page("communities", "", "");
+		page.params.q = r#"a"><b>&quot;"#.to_string();
+		page.subreddits = vec![Subreddit {
+			name: "rust".to_string(),
+			url: "/r/rust".to_string(),
+			icon: r#"/style/x.png?a=1&s=2"><i>"#.to_string(),
+			description: String::new(),
+			subscribers: format_num(1),
+		}];
+		let html = page.render().unwrap();
+		assert!(html.contains(r#"name="q" placeholder="Search" value="a&#34;&#62;&#60;b&#62;&#38;quot;""#), "{html}");
+		assert!(html.contains(r#"src="/style/x.png?a=1&#38;s=2&#34;&#62;&#60;i&#62;""#), "{html}");
+		assert!(!html.contains("<b>") && !html.contains("<i>"), "{html}");
 	}
 
 	#[test]
