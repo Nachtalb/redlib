@@ -1,0 +1,77 @@
+name: Release
+
+# Started by hand (Actions → Release → Run workflow). Writes the next YYYY.MDD.N
+# into Cargo.toml and Cargo.lock, commits and tags it on main, then builds and
+# publishes it through the Container build.
+on:
+  workflow_dispatch:
+
+# One release at a time; a second run waits for the first.
+concurrency:
+  group: release
+
+permissions: {}
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.commit.outputs.version }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # main as it is now: a run that waited for another release starts after that release's commit
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      # A GitHub App may commit to the protected main branch; the built-in token can't.
+      - name: App token
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Commit and tag the version
+        id: commit
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # Without the tags the version would restart at 1, and the commit would land before the tag fails
+          set -o pipefail
+          version=$(git ls-remote --tags --refs origin | sed 's#.*refs/tags/##' | scripts/next_version.sh)
+          sed -i "0,/^version = .*/s//version = \"$version\"/" Cargo.toml
+          sed -i "/^name = \"redlib\"$/{n;s/^version = .*/version = \"$version\"/}" Cargo.lock
+          test "$(git diff --numstat | wc -l)" = 2
+          # Committed through the API, so GitHub signs it; fails if main moved since the checkout.
+          jq -n --arg repo "$GH_REPO" --arg head "$(git rev-parse HEAD)" --arg message "chore: release $version" \
+            --rawfile toml <(base64 -w0 Cargo.toml) --rawfile lock <(base64 -w0 Cargo.lock) '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: $repo, branchName: "main"},
+                expectedHeadOid: $head,
+                message: {headline: $message},
+                fileChanges: {additions: [{path: "Cargo.toml", contents: $toml}, {path: "Cargo.lock", contents: $lock}]}
+              }}
+            }' > "$RUNNER_TEMP/commit.json"
+          sha=$(gh api graphql --input "$RUNNER_TEMP/commit.json" --jq .data.createCommitOnBranch.commit.oid)
+          gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$version" -f sha="$sha" > /dev/null
+          echo "Release $version: $sha" >> "$GITHUB_STEP_SUMMARY"
+          { echo "version=$version"; echo "sha=$sha"; } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/main-docker.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      sha: ${{ needs.prepare.outputs.sha }}
