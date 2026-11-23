@@ -1006,10 +1006,18 @@ pub fn deflate_compress(i: Vec<u8>) -> Result<Vec<u8>, String> {
 	e.finish().into_result().map_err(|e| e.to_string())
 }
 
+/// What a settings code may inflate to. Settings are a few kilobytes; a megabyte of zeros deflates to about one.
+const MAX_INFLATED_BYTES: u64 = 1024 * 1024;
+
 pub fn deflate_decompress(i: Vec<u8>) -> Result<Vec<u8>, String> {
-	let mut decoder = Decoder::new(&i[..]);
 	let mut out = Vec::new();
-	decoder.read_to_end(&mut out).map_err(|e| format!("Failed to read from gzip decoder: {e}"))?;
+	Decoder::new(&i[..])
+		.take(MAX_INFLATED_BYTES + 1)
+		.read_to_end(&mut out)
+		.map_err(|e| format!("Failed to read from gzip decoder: {e}"))?;
+	if out.len() as u64 > MAX_INFLATED_BYTES {
+		return Err("Decompressed data is too large".to_string());
+	}
 	Ok(out)
 }
 
@@ -2686,6 +2694,14 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 		let bytes = prefs.to_bincode().unwrap();
 		assert_eq!(bytes[0], super::REVISIONED_PREFS_MARKER);
 		assert_eq!(Preferences::from_bincode(&bytes).unwrap(), prefs);
+	}
+
+	#[test]
+	fn test_inflating_stops_at_the_limit() {
+		assert_eq!(deflate_decompress(deflate_compress(vec![0; 4096]).unwrap()).unwrap().len(), 4096);
+		// a few kilobytes that would inflate to 8 MB
+		let bomb = deflate_compress(vec![0; 8 * 1024 * 1024]).unwrap();
+		assert!(deflate_decompress(bomb).is_err());
 	}
 
 	#[test]

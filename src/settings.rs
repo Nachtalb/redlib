@@ -25,6 +25,9 @@ struct SettingsTemplate {
 
 // CONSTANTS
 
+/// The largest form a client may post, read into memory as a whole.
+const MAX_FORM_BYTES: usize = 1024 * 1024;
+
 const PREFS: [&str; 27] = [
 	"theme",
 	"front_page",
@@ -338,7 +341,7 @@ pub async fn set(req: Request<Body>) -> Result<Response<Body>, String> {
 		.collect();
 
 	// Aggregate the body...
-	let body_bytes = body.collect_bytes().await.map_err(|e| e.to_string())?;
+	let body_bytes = body.collect_bytes_up_to(MAX_FORM_BYTES).await.map_err(|e| e.to_string())?;
 
 	let form = url::form_urlencoded::parse(&body_bytes).collect::<HashMap<_, _>>();
 
@@ -542,11 +545,11 @@ pub async fn update(req: Request<Body>) -> Result<Response<Body>, String> {
 }
 
 pub async fn encoded_restore(req: Request<Body>) -> Result<Response<Body>, String> {
-	let body = req.into_body().collect_bytes().await.map_err(|e| format!("Failed to get bytes from request body: {e}"))?;
-
-	if body.len() > 1024 * 1024 {
-		return Err("Request body too large".to_string());
-	}
+	let body = req
+		.into_body()
+		.collect_bytes_up_to(MAX_FORM_BYTES)
+		.await
+		.map_err(|e| format!("Failed to get bytes from request body: {e}"))?;
 
 	let encoded_prefs = form_urlencoded::parse(&body)
 		.find(|(key, _)| key == "encoded_prefs")
