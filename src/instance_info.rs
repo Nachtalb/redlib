@@ -121,9 +121,11 @@ impl InstanceInfo {
 			short = crate::utils::short_git_hash()
 		);
 		let source_link = format!("<a href=\"{source}\">{source}</a>");
+		let version = format!("<a href=\"{}\">{}</a>", crate::utils::version_url(), crate::utils::version());
 		container.add_table(
 			Table::from([
 				["Package name", &self.package_name],
+				["Version", &version],
 				["Source", &source_link],
 				["Git commit", &commit],
 				["Deploy date", &self.deploy_date],
