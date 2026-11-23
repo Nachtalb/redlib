@@ -8,10 +8,14 @@ function copy(text) {
     field.style.position = "fixed";
     field.style.opacity = "0";
     document.body.append(field);
-    field.select();
-    const copied = document.execCommand("copy");
-    field.remove();
-    return copied ? Promise.resolve() : Promise.reject();
+    try {
+        field.select();
+        return document.execCommand("copy") ? Promise.resolve() : Promise.reject();
+    } catch (error) {
+        return Promise.reject(error);
+    } finally {
+        field.remove();
+    }
 }
 
 // When copying fails too, show the address to copy by hand instead of leaving the page.
