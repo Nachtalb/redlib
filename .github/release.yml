@@ -1,0 +1,14 @@
+# Sections of the generated release notes, by pull request label. A pull
+# request lands in the first section whose label it has.
+changelog:
+  categories:
+    - title: Breaking changes
+      labels: [breaking]
+    - title: Features
+      labels: [enhancement]
+    - title: Fixes
+      labels: [bug]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Other changes
+      labels: ["*"]
