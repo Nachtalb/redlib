@@ -594,6 +594,7 @@ pub async fn encoded_restore(req: Request<Body>) -> Result<Response<Body>, Strin
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use sealed_test::prelude::*;
 
 	#[tokio::test]
 	async fn test_settings_link_from_another_site_asks_first() {
@@ -631,5 +632,17 @@ mod tests {
 		.render()
 		.unwrap();
 		assert!(html.contains(r#"href="/settings?return_to=/r/a%2Bb/new%3Fafter%3Dx%26t%3Dday""#));
+	}
+
+	#[sealed_test(env = [("REDLIB_DEFAULT_SHARE_LINK", "https://r.example.org")])]
+	fn test_share_link_field_leaves_out_the_instance_default() {
+		let html = SettingsTemplate {
+			prefs: Preferences::new(&Request::new(Body::from(""))),
+			url: String::new(),
+			return_url: String::new(),
+		}
+		.render()
+		.unwrap();
+		assert!(html.contains(r#"id="share_link" value="" placeholder="https://r.example.org""#));
 	}
 }

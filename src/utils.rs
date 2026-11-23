@@ -919,7 +919,8 @@ impl Preferences {
 			more_replies_new_page: setting(req, "more_replies_new_page"),
 			light_theme: setting(req, "light_theme"),
 			dark_theme: setting(req, "dark_theme"),
-			share_link: setting(req, "share_link"),
+			// The user's own value only, so saving the settings form never stores the instance default.
+			share_link: req.cookie("share_link").map(|c| c.value().to_owned()).unwrap_or_default(),
 		}
 	}
 
