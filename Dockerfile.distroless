@@ -50,7 +50,9 @@ COPY . ./
 
 ARG TARGETARCH
 ARG TARGETVARIANT
-ARG GIT_HASH=dev
+ARG GIT_HASH=
+# Set by the release workflow: the binary then reports the Cargo.toml version.
+ARG REDLIB_RELEASE=
 # Cargo features, e.g. `mimalloc`; each set gets its own target cache.
 ARG FEATURES=
 RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \

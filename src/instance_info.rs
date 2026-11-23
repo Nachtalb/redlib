@@ -90,7 +90,7 @@ impl InstanceInfo {
 	pub fn new() -> Self {
 		Self {
 			package_name: env!("CARGO_PKG_NAME").to_string(),
-			crate_version: env!("CARGO_PKG_VERSION").to_string(),
+			crate_version: env!("REDLIB_VERSION").to_string(),
 			git_commit: env!("GIT_HASH").to_string(),
 			deploy_date: OffsetDateTime::now_local()
 				.unwrap_or_else(|_| OffsetDateTime::now_utc())
@@ -121,9 +121,11 @@ impl InstanceInfo {
 			short = crate::utils::short_git_hash()
 		);
 		let source_link = format!("<a href=\"{source}\">{source}</a>");
+		let version = format!("<a href=\"{}\">{}</a>", crate::utils::version_url(), crate::utils::version());
 		container.add_table(
 			Table::from([
 				["Package name", &self.package_name],
+				["Version", &version],
 				["Source", &source_link],
 				["Git commit", &commit],
 				["Deploy date", &self.deploy_date],

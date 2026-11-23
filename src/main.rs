@@ -159,7 +159,7 @@ async fn main() {
 	let setting_on = |key: &str| config::get_setting(key).as_deref() == Some("on");
 
 	let matches = Command::new("Redlib")
-		.version(env!("CARGO_PKG_VERSION"))
+		.version(env!("REDLIB_VERSION"))
 		.about("Private front-end for Reddit written in Rust ")
 		.arg(Arg::new("ipv4-only").short('4').long("ipv4-only").help("Listen on IPv4 only").num_args(0))
 		.arg(Arg::new("ipv6-only").short('6').long("ipv6-only").help("Listen on IPv6 only").num_args(0))
@@ -540,7 +540,7 @@ async fn main() {
 	// Default service in case no routes match
 	app.at("/*").get(|req| error(req, "Nothing here").boxed());
 
-	println!("Running Redlib v{} on {listener}!", env!("CARGO_PKG_VERSION"));
+	println!("Running Redlib {} on {listener}!", env!("REDLIB_VERSION"));
 
 	let server = app.listen(&listener);
 

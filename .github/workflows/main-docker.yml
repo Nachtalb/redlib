@@ -13,15 +13,43 @@ on:
       - "Dockerfile.distroless"
       - ".dockerignore"
       - ".github/workflows/main-docker.yml"
+  # A maintainer adds the `build-image` label to a pull request to get a
+  # `pr-<number>` image of the commit it had at that moment.
+  pull_request_target:
+    types: [labeled]
   workflow_dispatch:
+  # The release workflow builds its release commit with this workflow.
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      sha:
+        type: string
+        required: true
 
 concurrency:
-  group: container-${{ github.ref }}
+  # Releases, pull request images and the release commit's own push (which builds nothing) don't cancel main's builds.
+  group: >-
+    container-${{ inputs.version
+    || github.event.label && format('pr-{0}-{1}', github.event.pull_request.number, github.event.label.name)
+    || startsWith(github.event.head_commit.message, 'chore: release ') && endsWith(github.actor, '[bot]') && github.sha
+    || github.ref }}
   cancel-in-progress: true
+
+env:
+  # pull_request_target runs main's workflow; the pull request's commit is what gets built.
+  SHA: ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   build:
     name: build (${{ matrix.platform }}${{ matrix.variant && format(', {0}', matrix.variant) || '' }})
+    # The release workflow builds the release commit, so its push to main doesn't. Only the
+    # release App's push is skipped: a merge whose title happens to start the same way still builds.
+    if: >-
+      github.event_name == 'pull_request_target' && github.event.label.name == 'build-image'
+      || github.event_name != 'pull_request_target'
+      && !(startsWith(github.event.head_commit.message, 'chore: release ') && endsWith(github.actor, '[bot]'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,8 +72,12 @@ jobs:
           - { platform: linux/arm64, variant: mimalloc }
     steps:
       - name: Prepare
+        env:
+          RELEASE: ${{ inputs.version }}
         run: |
           echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          # What the binary in the image reports as its version.
+          echo "IMAGE_VERSION=${RELEASE:-dev-${SHA::7}}" >> "$GITHUB_ENV"
           platform=${{ matrix.platform }}
           pair=${platform//\//-}
           echo "PLATFORM_PAIR=$pair" >> "$GITHUB_ENV"
@@ -57,6 +89,9 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
 
       - name: Docker meta
         id: meta
@@ -66,6 +101,8 @@ jobs:
           labels: |
             org.opencontainers.image.description=Private front-end for Reddit
             org.opencontainers.image.licenses=AGPL-3.0-only
+            org.opencontainers.image.revision=${{ env.SHA }}
+            org.opencontainers.image.version=${{ env.IMAGE_VERSION }}
 
       - name: Set up Docker Buildx
         id: buildx
@@ -73,20 +110,27 @@ jobs:
 
       - name: Cargo cache
         id: cargo-cache
+        if: github.event_name != 'pull_request_target'
         uses: actions/cache@v6
-        with:
+        with: &cargo-cache
           path: cargo-cache
           key: cargo-${{ env.VARIANT_PREFIX }}${{ env.PLATFORM_PAIR }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             cargo-${{ env.VARIANT_PREFIX }}${{ env.PLATFORM_PAIR }}-
             cargo-${{ env.PLATFORM_PAIR }}-
 
+      # Pull request code must not end up in the caches main builds from.
+      - name: Cargo cache (read-only)
+        if: github.event_name == 'pull_request_target'
+        uses: actions/cache/restore@v6
+        with: *cargo-cache
+
       - name: Inject cargo cache into the build
         uses: reproducible-containers/buildkit-cache-dance@v3
         with:
           builder: ${{ steps.buildx.outputs.name }}
           # Copying the cache out takes minutes; only needed when deps changed
-          skip-extraction: ${{ steps.cargo-cache.outputs.cache-hit }}
+          skip-extraction: ${{ steps.cargo-cache.outputs.cache-hit || github.event_name == 'pull_request_target' }}
           cache-map: |
             {
               "cargo-cache/registry": { "target": "/root/.cargo/registry", "id": "cargo-registry" },
@@ -109,12 +153,13 @@ jobs:
           file: Dockerfile.distroless
           platforms: ${{ matrix.platform }}
           build-args: |
-            GIT_HASH=${{ github.sha }}
+            GIT_HASH=${{ env.SHA }}
+            REDLIB_RELEASE=${{ inputs.version && '1' || '' }}
             FEATURES=${{ matrix.variant }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=registry,ref=${{ env.IMAGE }}-buildcache:${{ env.PLATFORM_PAIR }}${{ env.SUFFIX }}
-          cache-to: type=registry,ref=${{ env.IMAGE }}-buildcache:${{ env.PLATFORM_PAIR }}${{ env.SUFFIX }},mode=max,ignore-error=true
+          cache-to: ${{ github.event_name != 'pull_request_target' && format('type=registry,ref={0}-buildcache:{1}{2},mode=max,ignore-error=true', env.IMAGE, env.PLATFORM_PAIR, env.SUFFIX) || '' }}
 
       - name: Export digest
         run: |
@@ -137,7 +182,19 @@ jobs:
       packages: write
     steps:
       - name: Prepare
-        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          if [ -n "$PR" ]; then
+            tags="pr-$PR"
+          else
+            tags="sha-${SHA::7}"
+            if [ -n "$VERSION" ]; then tags="$tags $VERSION latest"
+            elif [ "$GITHUB_REF" = refs/heads/main ]; then tags="$tags dev"; fi
+          fi
+          echo "TAGS=$tags" >> "$GITHUB_ENV"
 
       - name: Download digests
         uses: actions/download-artifact@v8
@@ -163,45 +220,27 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Docker meta (mimalloc)
-        id: meta-mimalloc
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-          flavor: suffix=-mimalloc,onlatest=true
-
       - name: Create manifest lists and push
         working-directory: ${{ runner.temp }}
-        env:
-          TAGS: ${{ steps.meta.outputs.json }}
-          TAGS_MIMALLOC: ${{ steps.meta-mimalloc.outputs.json }}
         run: |
           create() {
-            docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$1") \
-              $(cd "$2" && printf "$IMAGE@sha256:%s " *)
+            args=()
+            for tag in $TAGS; do args+=(-t "$IMAGE:$tag$1"); done
+            for digest in "$2"/*; do args+=("$IMAGE@sha256:${digest##*/}"); done
+            docker buildx imagetools create "${args[@]}"
           }
-          create "$TAGS" digests
-          create "$TAGS_MIMALLOC" digests-mimalloc
+          create "" digests
+          create -mimalloc digests-mimalloc
 
       - name: Inspect images
         run: |
-          docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
-          docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta-mimalloc.outputs.version }}
+          docker buildx imagetools inspect "$IMAGE:${TAGS%% *}"
+          docker buildx imagetools inspect "$IMAGE:${TAGS%% *}-mimalloc"
 
   # Targets Docker can't build. Their Cargo caches live in the Actions cache.
+  # Only releases and hand-started runs need them (macOS minutes are expensive).
   native:
+    if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -218,11 +257,15 @@ jobs:
         shell: bash
     env:
       TARGET: ${{ matrix.target }}
-      GIT_HASH: ${{ github.sha }}
+      GIT_HASH: ${{ inputs.sha || github.sha }}
+      REDLIB_RELEASE: ${{ inputs.version && '1' || '' }}
       CARGO_TERM_COLOR: always
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
 
       - name: Toolchain
         run: rustup toolchain install 1.99 --profile minimal --no-self-update --target "$TARGET" && rustup default 1.99
@@ -264,22 +307,23 @@ jobs:
           path: dist/*
           retention-days: 1
 
-  # Publishes the static binaries from the pushed image, plus the native ones,
-  # as the `latest` release.
+  # Attaches the static binaries from the release images, plus the native ones,
+  # to the GitHub release.
   release:
     runs-on: ubuntu-latest
     needs: [merge, native]
     # A failed native target doesn't hold back the rest.
-    if: ${{ !cancelled() && needs.merge.result == 'success' && github.ref == 'refs/heads/main' }}
+    if: ${{ !cancelled() && needs.merge.result == 'success' && inputs.version }}
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
     steps:
       - name: Copy the binaries out of the image
         run: |
-          image=ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA::7}
+          image=ghcr.io/${GITHUB_REPOSITORY,,}:$VERSION
           mkdir dist
           for pair in amd64=x86_64-unknown-linux-musl 386=i686-unknown-linux-musl arm64=aarch64-unknown-linux-musl \
             arm/v7=armv7-unknown-linux-musleabihf arm/v6=arm-unknown-linux-musleabihf \
@@ -304,18 +348,7 @@ jobs:
       - name: Checksums
         run: cd dist && sha256sum redlib-* > SHA256SUMS
 
-      - name: Update the latest release
+      - name: Create the release
         run: |
-          short=${GITHUB_SHA::7}
-          subject=$(gh api "repos/$GH_REPO/commits/$GITHUB_SHA" --jq '.commit.message | split("\n")[0]')
-          title="Latest build ($short)"
-          notes="Built from [\`$short\`]($GITHUB_SERVER_URL/$GH_REPO/commit/$GITHUB_SHA) ($subject) on $(date -u '+%Y-%m-%d %H:%M') UTC.
-
-          The static Linux binaries are the same ones as in the \`ghcr.io/${GITHUB_REPOSITORY,,}:sha-$short\` image, the \`-mimalloc\` ones as in \`sha-$short-mimalloc\` (faster under load, hold more memory). The macOS, Windows and Android builds are not tested by this fork. This release is replaced on every push to \`main\`."
-          if gh release view latest > /dev/null 2>&1; then
-            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest" -f sha="$GITHUB_SHA" -F force=true
-            gh release upload latest dist/* --clobber
-            gh release edit latest --title "$title" --notes "$notes" --latest
-          else
-            gh release create latest dist/* --target "$GITHUB_SHA" --title "$title" --notes "$notes" --latest
-          fi
+          notes="Images: \`ghcr.io/${GITHUB_REPOSITORY,,}:$VERSION\`, and \`$VERSION-mimalloc\` for amd64 and arm64 (faster under load, holds more memory). The static Linux binaries are the ones in these images; the macOS, Windows and Android builds are not tested."
+          gh release create "$VERSION" dist/* --verify-tag --title "$VERSION" --notes "$notes" --generate-notes --latest

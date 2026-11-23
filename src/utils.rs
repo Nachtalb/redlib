@@ -1898,6 +1898,24 @@ pub fn short_git_hash() -> &'static str {
 	hash.get(..7).unwrap_or(hash)
 }
 
+/// The release version, or `dev-<short hash>` for builds between releases.
+pub fn version() -> &'static str {
+	env!("REDLIB_VERSION")
+}
+
+/// The GitHub release of this build, or its commit for builds between releases.
+pub fn version_url() -> String {
+	version_url_for(&get_source_url(), version(), env!("GIT_HASH"))
+}
+
+fn version_url_for(source: &str, version: &str, commit: &str) -> String {
+	if version.starts_with("dev-") {
+		format!("{source}/commit/{commit}")
+	} else {
+		format!("{source}/releases/tag/{version}")
+	}
+}
+
 /// Determines if a request should redirect to a NSFW landing gate.
 pub fn should_be_nsfw_gated(req: &Request<Body>, _req_url: &str) -> bool {
 	(setting(req, "show_nsfw") != "on") || sfw_only()
@@ -2897,5 +2915,12 @@ How`s your monitor by the way? Any IPS bleed whatsoever? I either got lucky or t
 			r#"<a href="https://redlib.example/r/rust">r/rust</a><img src="https://redlib.example/preview/pre/x.png"><a href="//example.com">x</a><a href="https://a.b/c">y</a>"#
 		);
 		assert_eq!(prefix_relative_urls(html, ""), html);
+	}
+
+	#[test]
+	fn version_url_links_the_release_or_the_commit() {
+		let source = "https://github.com/redlib-org/redlib";
+		assert_eq!(super::version_url_for(source, "2026.1102.1", "abc"), format!("{source}/releases/tag/2026.1102.1"));
+		assert_eq!(super::version_url_for(source, "dev-0123456", "0123456789"), format!("{source}/commit/0123456789"));
 	}
 }
