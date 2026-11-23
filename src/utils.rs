@@ -1682,12 +1682,22 @@ pub fn template(t: &impl Template) -> Response<Body> {
 		.unwrap_or_default()
 }
 
+/// Whether `path` stays on this instance. Browsers read `//host` and `/\host`
+/// as another site, and drop tabs and line breaks before they look.
+fn is_local_path(path: &str) -> bool {
+	let mut chars = path.chars();
+	chars.next() == Some('/') && !matches!(chars.next(), Some('/' | '\\')) && !path.contains(char::is_control)
+}
+
+/// Redirects to `path` on this instance, or to `/` when it leads elsewhere:
+/// part of it often comes from the request or from Reddit.
 pub fn redirect(path: &str) -> Response<Body> {
+	let path = if is_local_path(path) { path } else { "/" };
 	Response::builder()
 		.status(302)
 		.header("content-type", "text/html")
 		.header("Location", path)
-		.body(format!("Redirecting to <a href=\"{path}\">{path}</a>...").into())
+		.body(format!("Redirecting to <a href=\"{0}\">{0}</a>...", htmlescape::encode_minimal(path)).into())
 		.unwrap_or_default()
 }
 
@@ -2173,6 +2183,34 @@ fn get_mime_type(url: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn test_redirect_stays_on_this_instance() {
+		let location = |path: &str| super::redirect(path).headers()["Location"].to_str().unwrap().to_string();
+		for local in ["/", "/settings", "/r/rust/new?after=t3_x&t=day#top", "/search?q=https://example.org//x"] {
+			assert_eq!(location(local), local);
+		}
+		for elsewhere in [
+			"//example.org",
+			"/\\example.org",
+			"/\t/example.org",
+			"https://example.org/",
+			"javascript:alert(1)",
+			"example.org",
+			"",
+		] {
+			assert_eq!(location(elsewhere), "/", "{elsewhere:?}");
+		}
+	}
+
+	#[tokio::test]
+	async fn test_redirect_body_escapes_the_path() {
+		let body = super::redirect("/search?q=\"><img src=x>&t=all").into_body().collect_bytes().await.unwrap();
+		assert_eq!(
+			String::from_utf8_lossy(&body),
+			r#"Redirecting to <a href="/search?q=&quot;&gt;&lt;img src=x&gt;&amp;t=all">/search?q=&quot;&gt;&lt;img src=x&gt;&amp;t=all</a>..."#
+		);
+	}
+
 	#[test]
 	fn test_time_unknown_is_empty() {
 		// A missing timestamp parses as 0; show nothing instead of Jan 01 1970
