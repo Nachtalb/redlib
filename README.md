@@ -10,7 +10,7 @@ An alternative private front-end to Reddit, with its origins in [Libreddit](http
 
 > [!IMPORTANT]
 > **This is a fork of [redlib-org/redlib](https://github.com/redlib-org/redlib).**
-> It ships multi-arch images for amd64, 386, arm64, arm/v7, arm/v6, riscv64 and mips64le, and includes many features and fixes from unmerged upstream pull requests plus its own. See [FORK.md](FORK.md) for the full list of changes.
+> It ships multi-arch images for amd64, 386, arm64, arm/v7, arm/v6, riscv64 and mips64le, and includes many features and fixes from unmerged upstream pull requests plus its own.
 
 > [!TIP]
 > Run this fork's image, **`ghcr.io/nachtalb/redlib:latest`**, rather than upstream's `quay.io/redlib/redlib`.
