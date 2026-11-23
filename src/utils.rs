@@ -1589,7 +1589,9 @@ pub fn rewrite_emotes(media_metadata: &Value, comment: String) -> String {
 		index -= 1;
 
 		// Convert our current index in id_vec into a string so we can search through it with regex
-		let current_id = id_vec[index].to_string();
+		let Some(current_id) = id_vec.get(index).map(ToString::to_string) else {
+			continue;
+		};
 
 		/* The ID number can be multiple lengths, so we capture it with regex.
 		We also want to only attempt anything when we get matches to avoid panicking */
@@ -1597,19 +1599,21 @@ pub fn rewrite_emotes(media_metadata: &Value, comment: String) -> String {
 			// Format the ID to include the colons it has in the comment text
 			let id = format!(":{}:", &id_capture[1]);
 
-			// Convert current link to string to search through it with the regex
-			let link = link_vec[index].to_string();
+			// The link as text to search through it with the regex
+			let link = link_vec[index].as_str().unwrap_or_default();
 
 			// Make sure we only do operations when we get matches, otherwise we panic when trying to access the first match
-			if let Some(link_capture) = REDDIT_EMOTE_LINK_REGEX.captures(&link) {
+			if let Some(link_capture) = REDDIT_EMOTE_LINK_REGEX.captures(link) {
 				/* Reddit sends a size for the image based on whether it's alone or accompanied by text.
 				It's a good idea and makes everything look nicer, so we'll do the same. */
-				let size = media_metadata.json_path(&size_path).first().unwrap().to_string();
+				let Some(size) = media_metadata.json_path(&size_path).first().and_then(Value::as_u64) else {
+					continue;
+				};
 
 				// Replace the ID we found earlier in the comment with the respective image and it's link from the regex capture
 				let to_replace_with = format!(
-					"<img loading=\"lazy\" src=\"/emote/{} width=\"{size}\" height=\"{size}\" style=\"vertical-align:text-bottom\">",
-					&link_capture[1]
+					"<img loading=\"lazy\" src=\"/emote/{}\" width=\"{size}\" height=\"{size}\" style=\"vertical-align:text-bottom\">",
+					htmlescape::encode_minimal(&link_capture[1])
 				);
 
 				// Inside the comment replace the ID we found with the string that will embed the image
@@ -2530,6 +2534,21 @@ mod tests {
 		let comment_input = r#"<div class="comment_body "><div class="md"><p>:2028:</p></div></div>"#;
 		let output = r#"<div class="comment_body "><div class="md"><p><img loading="lazy" src="/emote/t5_31hpy/PW6WsOaLcd.png" width="60" height="60" style="vertical-align:text-bottom"></p></div></div>"#;
 		assert_eq!(rewrite_emotes(&json_input, comment_input.to_string()), output);
+	}
+
+	#[test]
+	fn test_emote_metadata_cannot_add_markup_or_panic() {
+		let comment = "<p>:1:</p>";
+		let emote = |link: &str, size: Value| json!({ "emote|t5_x|1": { "id": "emote|t5_x|1", "s": { "u": link, "y": size } } });
+		let link = "https://reddit-econ-prod-assets-permanent.s3.amazonaws.com/asset-manager/t5_x/a.png";
+		assert_eq!(
+			rewrite_emotes(&emote(&format!("{link}\" onerror=\"alert(1)"), json!(20)), comment.to_string()),
+			r#"<p><img loading="lazy" src="/emote/t5_x/a.png&quot; onerror=&quot;alert(1)" width="20" height="20" style="vertical-align:text-bottom"></p>"#
+		);
+		// A size that isn't a number, no size, and a link without an id
+		assert_eq!(rewrite_emotes(&emote(link, json!("20\" onload=\"x")), comment.to_string()), comment);
+		assert_eq!(rewrite_emotes(&json!({ "a": { "id": "emote|t5_x|1", "s": { "u": link } } }), comment.to_string()), comment);
+		assert_eq!(rewrite_emotes(&json!({ "a": { "s": { "u": link, "y": 20 } } }), comment.to_string()), comment);
 	}
 
 	#[test]
