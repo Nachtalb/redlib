@@ -45,7 +45,7 @@ Redlib supports the following command line flags. They take precedence over envi
 - `-H`, `--hsts <EXPIRE_TIME>`: HSTS header to tell browsers that this site should only be accessed over HTTPS. Default is `604800`.
 - `--cacert <FILE>`: Trust only the CA certificates in this PEM file for requests to Reddit and the other upstream hosts. For debugging: `ALL_PROXY=http://127.0.0.1:8080 redlib --cacert ~/.mitmproxy/mitmproxy-ca-cert.pem` shows the decrypted traffic in mitmproxy. `REDLIB_CACERT` sets the same; the flag takes precedence.
 - `-h`, `--help`: Print the flags and exit.
-- `-V`, `--version`: Print the version and exit.
+- `-V`, `--version`: Print the version and exit: the release, or `dev-<commit>` for builds between releases.
 
 ## Instance settings
 
