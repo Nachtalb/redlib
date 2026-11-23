@@ -305,7 +305,7 @@ For maintainers. Run **Actions → Release → Run workflow** on `main`. It pick
 
 - Label pull requests that make users change something (settings, defaults, endpoints, the image, binary names) `breaking`; the notes list those first.
 - The `build-image` label gets a pull request a `pr-<number>` test image of its current commit. Read the changes first, and re-add the label after new commits.
-- One-time setup: a GitHub App with Contents read and write, installed on this repository and allowed past the rule protecting `main`, with its ID and private key in the secrets `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY`.
+- One-time setup: a GitHub App with Contents read and write, installed on this repository and allowed past the rule protecting `main`, with its client ID and private key in the secrets `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY`.
 
 ---
 
