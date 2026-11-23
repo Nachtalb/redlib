@@ -1391,6 +1391,25 @@ pub fn body_html(item: &Value, markdown_key: &str, html_key: &str) -> String {
 	}
 }
 
+/// The schemes a link in a post or comment may have, as in Reddit's own markdown renderer.
+const LINK_SCHEMES: [&str; 12] = ["http", "https", "ftp", "mailto", "git", "steam", "irc", "ircs", "news", "mumble", "ssh", "ts3server"];
+
+/// Whether `url` may be a link target or image source in rendered markdown
+/// and richtext: a relative URL or one of `LINK_SCHEMES`, so no `javascript:`
+/// or `data:`. Browsers drop tabs and line breaks from a URL before they read
+/// its scheme, so those are refused rather than looked through.
+pub fn is_safe_link(url: &str) -> bool {
+	let url = url.trim();
+	if url.contains(char::is_control) {
+		return false;
+	}
+	// The scheme ends at the first `:`, unless the path, query or fragment starts before it
+	match url.split_once(':') {
+		Some((scheme, _)) if !scheme.contains(['/', '?', '#']) => LINK_SCHEMES.iter().any(|allowed| scheme.eq_ignore_ascii_case(allowed)),
+		_ => true,
+	}
+}
+
 /// Renders Reddit markdown, with syntax highlighting in code blocks.
 pub fn markdown_html(markdown: &str) -> String {
 	use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
@@ -1413,6 +1432,19 @@ pub fn markdown_html(markdown: &str) -> String {
 		Event::End(TagEnd::CodeBlock) => code.take().map(|(lang, text)| Event::Html(highlight(&lang, &text).into())),
 		// Reddit shows HTML in markdown as text
 		Event::Html(html) | Event::InlineHtml(html) => Some(Event::Text(html)),
+		// The parser takes any scheme; Reddit's HTML, which this stands in for, doesn't
+		Event::Start(Tag::Link { link_type, dest_url, title, id }) if !is_safe_link(&dest_url) => Some(Event::Start(Tag::Link {
+			link_type,
+			dest_url: "".into(),
+			title,
+			id,
+		})),
+		Event::Start(Tag::Image { link_type, dest_url, title, id }) if !is_safe_link(&dest_url) => Some(Event::Start(Tag::Image {
+			link_type,
+			dest_url: "".into(),
+			title,
+			id,
+		})),
 		event => Some(event),
 	});
 	let mut html = String::from("<div class=\"md\">");
@@ -2203,6 +2235,50 @@ mod tests {
 	fn test_markdown_shows_html_as_text() {
 		let html = crate::utils::markdown_html("<script>alert(1)</script>\n\n```\nx\n```\n\nhi <img src=x onerror=alert(1)>");
 		assert!(!html.contains("<script") && !html.contains("<img"), "{html}");
+	}
+
+	#[test]
+	fn test_is_safe_link() {
+		for safe in [
+			"https://example.org/a?b=c:d#e",
+			"HTTP://example.org",
+			" https://example.org ",
+			"mailto:a@example.org",
+			"steam://run/440",
+			"/r/rust",
+			"//example.org/a",
+			"#wiki_rules",
+			"wiki/index",
+			"?sort=new&t=1:2",
+			"",
+		] {
+			assert!(super::is_safe_link(safe), "{safe:?}");
+		}
+		for unsafe_link in [
+			"javascript:alert(1)",
+			"JavaScript:alert(1)",
+			" javascript:alert(1)",
+			"java\tscript:alert(1)",
+			"java\nscript:alert(1)",
+			"\u{1}javascript:alert(1)",
+			"data:text/html,<script>alert(1)</script>",
+			"vbscript:x",
+			"blob:https://example.org/x",
+			"https\t://example.org",
+		] {
+			assert!(!super::is_safe_link(unsafe_link), "{unsafe_link:?}");
+		}
+	}
+
+	#[test]
+	fn test_markdown_links_only_safe_schemes() {
+		let html = crate::utils::markdown_html(
+			"```\nx\n```\n\n[a](javascript:alert(1)) [b](https://example.org/b) [c](/r/rust) ![d](data:image/svg+xml,x) ![e](https://i.redd.it/e.png) <javascript:alert(2)>",
+		);
+		assert!(!html.contains("href=\"javascript") && !html.contains("src=\"data"), "{html}");
+		assert!(html.contains(r#"<a href="">a</a>"#), "{html}");
+		assert!(html.contains(r#"<a href="https://example.org/b">b</a> <a href="/r/rust">c</a>"#), "{html}");
+		assert!(html.contains(r#"<img src="" alt="d" /> <img src="https://i.redd.it/e.png" alt="e" />"#), "{html}");
 	}
 
 	#[test]
