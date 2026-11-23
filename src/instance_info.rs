@@ -90,7 +90,7 @@ impl InstanceInfo {
 	pub fn new() -> Self {
 		Self {
 			package_name: env!("CARGO_PKG_NAME").to_string(),
-			crate_version: env!("CARGO_PKG_VERSION").to_string(),
+			crate_version: env!("REDLIB_VERSION").to_string(),
 			git_commit: env!("GIT_HASH").to_string(),
 			deploy_date: OffsetDateTime::now_local()
 				.unwrap_or_else(|_| OffsetDateTime::now_utc())
