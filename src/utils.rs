@@ -1689,7 +1689,7 @@ pub fn redirect(path: &str) -> Response<Body> {
 		.status(302)
 		.header("content-type", "text/html")
 		.header("Location", path)
-		.body(format!("Redirecting to <a href=\"{path}\">{path}</a>...").into())
+		.body(format!("Redirecting to <a href=\"{0}\">{0}</a>...", htmlescape::encode_minimal(path)).into())
 		.unwrap_or_default()
 }
 
@@ -2192,6 +2192,15 @@ mod tests {
 		] {
 			assert_eq!(location(elsewhere), "/", "{elsewhere:?}");
 		}
+	}
+
+	#[tokio::test]
+	async fn test_redirect_body_escapes_the_path() {
+		let body = super::redirect("/search?q=\"><img src=x>&t=all").into_body().collect_bytes().await.unwrap();
+		assert_eq!(
+			String::from_utf8_lossy(&body),
+			r#"Redirecting to <a href="/search?q=&quot;&gt;&lt;img src=x&gt;&amp;t=all">/search?q=&quot;&gt;&lt;img src=x&gt;&amp;t=all</a>..."#
+		);
 	}
 
 	#[test]
