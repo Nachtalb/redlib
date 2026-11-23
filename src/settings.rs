@@ -4,7 +4,8 @@ use std::collections::HashMap;
 
 // CRATES
 use crate::body::Body;
-use crate::server::ResponseExt;
+use crate::instance_info::MessageTemplate;
+use crate::server::{is_cross_site, ResponseExt};
 use crate::subreddit::join_until_size_limit;
 use crate::utils::{deflate_decompress, redirect, template, Preferences};
 use askama::Template;
@@ -534,11 +535,27 @@ fn set_cookies_method(req: Request<Body>, remove_cookies: bool) -> Response<Body
 
 /// Set cookies using response "Set-Cookie" header
 pub async fn restore(req: Request<Body>) -> Result<Response<Body>, String> {
-	Ok(set_cookies_method(req, true))
+	Ok(confirm_from_another_site(&req).unwrap_or_else(|| set_cookies_method(req, true)))
 }
 
 pub async fn update(req: Request<Body>) -> Result<Response<Body>, String> {
-	Ok(set_cookies_method(req, false))
+	Ok(confirm_from_another_site(&req).unwrap_or_else(|| set_cookies_method(req, false)))
+}
+
+/// These links change settings on a GET, so any site could change a visitor's
+/// by linking to one. Coming from another site, the link is shown to click
+/// again instead of applied.
+fn confirm_from_another_site(req: &Request<Body>) -> Option<Response<Body>> {
+	if !is_cross_site(req.headers()) {
+		return None;
+	}
+	let link = htmlescape::encode_minimal(req.uri().path_and_query().map_or("/settings", |link| link.as_str()));
+	Some(template(&MessageTemplate {
+		title: "Change your settings?".to_string(),
+		body: format!("<p>The link you followed changes your settings on this instance.</p><br><p><a href=\"{link}\">Change my settings</a></p>"),
+		prefs: Preferences::new(req),
+		url: req.uri().to_string(),
+	}))
 }
 
 pub async fn encoded_restore(req: Request<Body>) -> Result<Response<Body>, String> {
@@ -574,6 +591,31 @@ pub async fn encoded_restore(req: Request<Body>) -> Result<Response<Body>, Strin
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[tokio::test]
+	async fn test_settings_link_from_another_site_asks_first() {
+		let request = |site: Option<&str>| {
+			let request = Request::builder().uri("/settings/restore/?theme=dark&redirect=settings");
+			site
+				.into_iter()
+				.fold(request, |request, site| request.header("Sec-Fetch-Site", site))
+				.body(Body::empty())
+				.unwrap()
+		};
+		// typed, bookmarked or opened from another program, and from this instance's own pages
+		for site in [None, Some("none"), Some("same-origin"), Some("same-site")] {
+			let response = restore(request(site)).await.unwrap();
+			assert_eq!(response.status(), 302, "{site:?}");
+			assert!(response.headers().contains_key("Set-Cookie"), "{site:?}");
+		}
+		for handler in [restore(request(Some("cross-site"))).await, update(request(Some("cross-site"))).await] {
+			let response = handler.unwrap();
+			assert_eq!(response.status(), 200);
+			assert!(!response.headers().contains_key("Set-Cookie"));
+			let body = response.into_body().collect_bytes().await.unwrap();
+			assert!(String::from_utf8_lossy(&body).contains(r#"<a href="/settings/restore/?theme=dark&amp;redirect=settings">"#));
+		}
+	}
 
 	/// A raw `+` in the link would come back as a space, a raw `&` would end the address.
 	#[test]

@@ -191,11 +191,11 @@ fn effective(value: &Option<String>, default: &str) -> String {
 
 #[derive(Template)]
 #[template(path = "message.html")]
-struct MessageTemplate {
-	title: String,
-	body: String,
-	prefs: Preferences,
-	url: String,
+pub(crate) struct MessageTemplate {
+	pub(crate) title: String,
+	pub(crate) body: String,
+	pub(crate) prefs: Preferences,
+	pub(crate) url: String,
 }
 
 #[cfg(test)]
