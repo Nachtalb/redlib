@@ -301,7 +301,7 @@ winget install -i LLVM.LLVM
 
 # Releasing
 
-For maintainers. Run **Actions → Release → Run workflow** on `main`. It picks the next version `YYYY.MDD.N` (like `2026.1102.1`), commits and tags it on `main`, builds the images and binaries, and publishes the GitHub release with generated notes. If it fails after the commit, use **Re-run failed jobs**: a new run makes a new version.
+For maintainers. Run **Actions → Release → Run workflow** on `main`. It picks the next version `YYYY.MDD.N` (like `2026.1102.1`), commits and tags it on `main`, builds the images and binaries, and publishes the GitHub release with generated notes. If it fails after the commit, use **Re-run failed jobs**: a new run makes a new version. If the commit landed but the tag didn't, the next run tags that commit instead of making another.
 
 - Label pull requests that make users change something (settings, defaults, endpoints, the image, binary names) `breaking`; the notes list those first.
 - The `build-image` label gets a pull request a `pr-<number>` test image of its current commit. Read the changes first, and re-add the label after new commits.
